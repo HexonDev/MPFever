@@ -31,7 +31,7 @@ check("try { InitInstallLocked(); }" in ii and "finally { if (held) try { gate.R
 check('Environment.GetEnvironmentVariable("MPFEVER_INSTALLLOCK") != "0"' in ii, "MPFEVER_INSTALLLOCK=0: no lock, as before")
 lk = mf[mf.index("        void InitInstallLocked()"):]
 lk = lk[:lk.index("\n        }\n")]
-check("GameInstall.InstallNative(gameDir)" in lk and "GameInstall.InstallMod()" in lk and "GameInstall.EnsureModActive()" in lk,
+check("GameInstall.InstallNative(gameDir)" in lk and "GameInstall.InstallMod(gameDir)" in lk and "GameInstall.EnsureModActive()" in lk,
       "the native module, the mod and its activation all inside the lock")
 print(f"\n{len(fails)} failure(s)" if fails else "\nall passed")
 sys.exit(1 if fails else 0)

@@ -71,8 +71,60 @@ namespace MPFever
             ok &= RunReport077();
             ok &= RunReport079();
             ok &= RunModIdTop0712();
+            ok &= RunNetReader();
             Log.W(ok ? "SELFTEST OK" : "SELFTEST FAILED");
             return ok ? 0 : 1;
+        }
+
+        // Stream.Read can split anywhere, including inside UTF-8, CRLF, and a binary payload.
+        sealed class FragmentedStream : MemoryStream
+        {
+            readonly int maxRead;
+            public FragmentedStream(byte[] bytes, int maxRead) : base(bytes, false) { this.maxRead = maxRead; }
+            public override int Read(byte[] buffer, int offset, int count) => base.Read(buffer, offset, Math.Min(count, maxRead));
+        }
+
+        static bool RunNetReader()
+        {
+            bool ok = true;
+            void Check(bool value, string what) { Log.W((value ? "ok    " : "FAIL  ") + "reader: " + what); ok &= value; }
+            try
+            {
+                var binary = new byte[] { 0, 10, 13, 255, 195, 0 };
+                var data = Encoding.UTF8.GetBytes("\n\r\nárvíztűrő 🚂\r\r\n").Concat(binary)
+                    .Concat(Encoding.UTF8.GetBytes("next\nunfinished")).ToArray();
+                foreach (int fragment in new[] { 1, 2, 7, 65536 })
+                {
+                    using (var stream = new FragmentedStream(data, fragment))
+                    {
+                        var reader = new NetReader(stream);
+                        Check(reader.ReadLine() == "" && reader.ReadLine() == "", "empty lines, read size " + fragment);
+                        Check(reader.ReadLine() == "árvíztűrő 🚂\r", "split UTF-8, remove one CR, read size " + fragment);
+                        Check(reader.ReadBytes(binary.Length).SequenceEqual(binary), "binary bytes after a line, read size " + fragment);
+                        Check(reader.ReadLine() == "next" && reader.ReadLine() == null && reader.ReadLine() == null,
+                            "next line and incomplete EOF, read size " + fragment);
+                    }
+                }
+                foreach (int length in new[] { 65534, 65535, 65536, 65537, 850000 })
+                {
+                    string line = new string('x', length);
+                    using (var stream = new MemoryStream(Encoding.UTF8.GetBytes(line + "\r\nend\n")))
+                    {
+                        var reader = new NetReader(stream);
+                        Check(reader.ReadLine() == line && reader.ReadLine() == "end" && reader.ReadLine() == null,
+                            "buffer boundary / long line, length " + length);
+                    }
+                }
+                using (var stream = new FragmentedStream(new byte[] { 1, 2 }, 1))
+                {
+                    bool refused = false;
+                    try { new NetReader(stream).ReadBytes(3); }
+                    catch (IOException) { refused = true; }
+                    Check(refused, "truncated binary payload refused");
+                }
+            }
+            catch (Exception e) { Check(false, e.ToString()); }
+            return ok;
         }
 
         /// <summary>(0.7.12) Issue #159: a mod's own id is the top level's "modId", not a dependency's.</summary>

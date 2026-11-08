@@ -40,8 +40,8 @@ version = re.search(r'public const string Version = "([^"]+)"', mf).group(1)
 
 init = mf[mf.index("        void InitInstallLocked()"):]   # (0.7.11: the install inside its lock, see InitInstall)
 init = init[:init.index("\n        }\n")]
-check("GameInstall.InstallMod();" in init and "if (!autotest) FindStaleMods();" in init
-      and init.index("GameInstall.InstallMod();") < init.index("FindStaleMods();"), "the copies looked for once the mod is installed (not in the autotests)")
+check("GameInstall.InstallMod(gameDir);" in init and "if (!autotest) FindStaleMods();" in init
+      and init.index("GameInstall.InstallMod(gameDir);") < init.index("FindStaleMods();"), "the copies looked for once the mod is installed (not in the autotests)")
 fin = mf[mf.index("        void InitFinish()"):]
 fin = fin[:fin.index("if (ServerMode)")]
 check("OfferStaleMods();" in fin, "  offered to be moved out on the window's thread, before the game starts")

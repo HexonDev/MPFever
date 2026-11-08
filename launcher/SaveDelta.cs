@@ -84,7 +84,7 @@ namespace MPFever
             Parallel.Invoke(
                 () => { baseCuts = Cut(baseData, o); baseKeys = HashChunks(baseData, baseCuts); },
                 () => { newCuts = Cut(newData, o); },
-                () => { using (var h = SHA256.Create()) sha = h.ComputeHash(newData); });
+                () => { sha = SHA256.HashData(newData); });
 
             var index = new Dictionary<ulong, int>(baseKeys.Length);
             for (int i = 0; i < baseKeys.Length; i++)
@@ -180,12 +180,9 @@ namespace MPFever
             }
             catch (IndexOutOfRangeException) { throw Bad(); }
 
-            using (var h = SHA256.Create())
-            {
-                byte[] got = h.ComputeHash(result);
-                for (int i = 0; i < 32; i++)
-                    if (got[i] != sha[i]) throw new InvalidDataException("The rebuilt savegame does not match (SHA-256): wrong base?");
-            }
+            Span<byte> got = stackalloc byte[32];
+            SHA256.HashData(result, got);
+            if (!got.SequenceEqual(sha)) throw new InvalidDataException("The rebuilt savegame does not match (SHA-256): wrong base?");
             return result;
         }
 
@@ -331,10 +328,7 @@ namespace MPFever
         static int CommonLength(byte[] a, int ai, byte[] b, int bi, int max)
         {
             max = Math.Min(max, Math.Min(a.Length - ai, b.Length - bi));
-            int n = 0;
-            while (n + 8 <= max && BitConverter.ToUInt64(a, ai + n) == BitConverter.ToUInt64(b, bi + n)) n += 8;
-            while (n < max && a[ai + n] == b[bi + n]) n++;
-            return n;
+            return a.AsSpan(ai, max).CommonPrefixLength(b.AsSpan(bi, max));
         }
 
         // appends an operation, merging it with the last one when they continue each other
