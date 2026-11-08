@@ -2186,8 +2186,11 @@ namespace MPFever
         public const string AppId = "3493540";
 
         /// <summary>(0.6.3) The game folder the player chose by hand (setting "gamedir"), for a game MPFever does not find itself (a
-        /// GOG copy, a folder of its own): looked at after the usual places only. MPFEVER_GOG=0: not.</summary>
+        /// GOG copy, a folder of its own): looked at before Steam when set. MPFEVER_GOG=0: not.</summary>
         public static string ChosenDir;
+
+        /// <summary>When true (setting "customgamedir"), only <see cref="ChosenDir"/> is used and Steam/GOG are not searched.</summary>
+        public static bool CustomDirOnly;
 
         public static bool IsGameDir(string d)
         {
@@ -2199,6 +2202,7 @@ namespace MPFever
         public static bool NotSteamCopy(string gameDir)
         {
             if (string.IsNullOrEmpty(gameDir) || Environment.GetEnvironmentVariable("MPFEVER_GOG") == "0") return false;
+            if (CustomDirOnly) return true;
             var d = gameDir.Replace('/', '\\').TrimEnd('\\') + "\\";
             return d.IndexOf(@"\steamapps\common\", StringComparison.OrdinalIgnoreCase) < 0;
         }
@@ -2280,22 +2284,27 @@ namespace MPFever
             // 0. tests: the folder given (MPFEVER_GAMEDIR)
             var envDir = Environment.GetEnvironmentVariable("MPFEVER_GAMEDIR");
             if (IsGameDir(envDir)) return envDir;
-            // 1. launcher placed inside the game folder (MPFever\...)
+            // 1. the folder the player chose by hand (gamedir): used first when set; when CustomDirOnly is on, Steam is not searched
+            if (Environment.GetEnvironmentVariable("MPFEVER_GOG") != "0")
+            {
+                if (IsGameDir(ChosenDir)) return ChosenDir;
+                if (CustomDirOnly) return null;
+            }
+            // 2. launcher placed inside the game folder (MPFever\...)
             var d = new DirectoryInfo(AppDomain.CurrentDomain.BaseDirectory);
             while (d != null)
             {
                 if (File.Exists(Path.Combine(d.FullName, "TransportFever3.exe"))) return d.FullName;
                 d = d.Parent;
             }
-            // 2. Steam libraries
+            // 3. Steam libraries
             foreach (var lib in SteamLibraries())
             {
                 var p = Path.Combine(lib, "steamapps", "common", "Transport Fever 3");
                 if (File.Exists(Path.Combine(p, "TransportFever3.exe"))) return p;
             }
             if (Environment.GetEnvironmentVariable("MPFEVER_GOG") == "0") return null;
-            // 3. (0.6.3) the folder the player chose, 4. GOG
-            if (IsGameDir(ChosenDir)) return ChosenDir;
+            // 4. GOG
             foreach (var p in GogDirs())
                 if (IsGameDir(p)) return p;
             return null;
@@ -2411,44 +2420,70 @@ namespace MPFever
             try { using (var k = Microsoft.Win32.Registry.CurrentUser.OpenSubKey(@"Software\Wine")) return k != null; } catch { return false; }
         }
 
-        /// <summary>Copies the mod into every Steam user's TF3 mods folder. Under Wine or Proton (issue #93) also into the game's
-        /// mods\release folder, where the game finds it there: each update of MPFever then reaches it too (MPFEVER_WINEMODS=0: not).</summary>
-        public static int InstallMod()
+        /// <summary>Copies the mod into the installed game's mods\mpfever_1 folder and every Steam user's TF3 mods folder,
+        /// removing any previous mpfever_1 folder first. Under Wine or Proton (issue #93) also into mods\release if present.</summary>
+        public static int InstallMod(string gameDir = null)
         {
             var src = FindModSource();
             int w = 0;
-            string game = null;
-            try { game = FindGameDir(); } catch { }
-            // (0.6.3) a copy Steam did not install (GOG): the same folder, where the game finds it too
-            bool notSteam = NotSteamCopy(game);
-            if (src != null && ((UnderWine() && Environment.GetEnvironmentVariable("MPFEVER_WINEMODS") != "0") || notSteam))
+            string game = gameDir;
+            if (string.IsNullOrEmpty(game)) try { game = FindGameDir(); } catch { }
+            if (src != null && !string.IsNullOrEmpty(game) && Directory.Exists(game))
             {
                 try
                 {
-                    var g = game;
-                    var rel = g == null ? null : Path.Combine(g, "mods", "release");
-                    if (rel != null && Directory.Exists(rel))
+                    var modsDir = Path.Combine(game, "mods");
+                    Directory.CreateDirectory(modsDir);
+                    var dst = Path.Combine(modsDir, "mpfever_1");
+                    // Remove any old copy in mods\mpfever_1 (and any leftover mods\release\mpfever_1 if not under Wine)
+                    var oldRel = Path.Combine(modsDir, "release", "mpfever_1");
+                    if (!UnderWine() && Directory.Exists(oldRel))
                     {
-                        var dst = Path.Combine(rel, "mpfever_1");
-                        if (Directory.Exists(dst)) Directory.Delete(dst, true);
-                        CopyDir(src, dst);
-                        w = 1;
-                        Log.Ok(L.T("Mod installé dans ", "Mod installed in ") + dst + (notSteam ? "" : " (Wine/Proton)"));
+                        DeleteDir(oldRel);
+                        Log.Dim(L.T("Ancien mod supprimé : ", "Previous mod removed: ") + oldRel);
                     }
+                    if (!string.Equals(Path.GetFullPath(src).TrimEnd('\\'), Path.GetFullPath(dst).TrimEnd('\\'), StringComparison.OrdinalIgnoreCase))
+                    {
+                        if (Directory.Exists(dst))
+                        {
+                            DeleteDir(dst);
+                            Log.Dim(L.T("Ancien mod supprimé : ", "Previous mod removed: ") + dst);
+                        }
+                        CopyDir(src, dst);
+                    }
+                    w++;
+                    Log.Ok(L.T("Mod installé dans ", "Mod installed in ") + dst);
                 }
-                catch (Exception e) { Log.W("mods\\release: " + e.Message); }
+                catch (Exception e) { Log.W("mods\\mpfever_1: " + e.Message); }
+
+                if (UnderWine() && Environment.GetEnvironmentVariable("MPFEVER_WINEMODS") != "0")
+                {
+                    try
+                    {
+                        var rel = Path.Combine(game, "mods", "release");
+                        if (Directory.Exists(rel))
+                        {
+                            var dst = Path.Combine(rel, "mpfever_1");
+                            if (Directory.Exists(dst)) DeleteDir(dst);
+                            CopyDir(src, dst);
+                            w++;
+                            Log.Ok(L.T("Mod installé dans ", "Mod installed in ") + dst + " (Wine/Proton)");
+                        }
+                    }
+                    catch (Exception e) { Log.W("mods\\release: " + e.Message); }
+                }
             }
-            var steam = SteamPath();
+            var steam = CustomDirOnly ? null : SteamPath();
             if (src == null || steam == null) { if (w == 0) Log.Err(L.T("Mod ou Steam introuvable, installation du mod ignorée", "Mod or Steam not found, mod installation skipped")); return w; }
             int n = w;
             var userdata = Path.Combine(steam, "userdata");
-            if (!Directory.Exists(userdata)) return 0;
+            if (!Directory.Exists(userdata)) return n;
             foreach (var u in Directory.GetDirectories(userdata))
             {
                 var local = Path.Combine(u, AppId, "local");
                 if (!Directory.Exists(local)) continue;
                 var dst = Path.Combine(local, "mods", "mpfever_1");
-                if (Directory.Exists(dst)) Directory.Delete(dst, true); // mirror: drop files removed from the mod
+                if (Directory.Exists(dst)) DeleteDir(dst); // mirror: drop files removed from the mod
                 CopyDir(src, dst);
                 n++;
                 Log.Ok(L.T("Mod installé dans ", "Mod installed in ") + dst);
@@ -2484,13 +2519,26 @@ namespace MPFever
         public static void EnsureModActive()
         {
             if (Process.GetProcessesByName("TransportFever3").Length > 0) return;
-            var steam = SteamPath();
-            if (steam == null) return;
-            var userdata = Path.Combine(steam, "userdata");
-            if (!Directory.Exists(userdata)) return;
-            foreach (var u in Directory.GetDirectories(userdata))
+            var files = new List<string>();
+            try
             {
-                var f = Path.Combine(u, AppId, "local", "settings.lua");
+                var appData = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
+                if (!string.IsNullOrEmpty(appData)) files.Add(Path.Combine(appData, "Transport Fever 3", "settings.lua"));
+            }
+            catch { }
+            lock (GameSaveDirs)
+                foreach (var sd in GameSaveDirs)
+                    try { var p = Path.GetDirectoryName(sd); if (!string.IsNullOrEmpty(p)) files.Add(Path.Combine(p, "settings.lua")); } catch { }
+            var steam = CustomDirOnly ? null : SteamPath();
+            if (steam != null)
+            {
+                var userdata = Path.Combine(steam, "userdata");
+                if (Directory.Exists(userdata))
+                    foreach (var u in Directory.GetDirectories(userdata))
+                        files.Add(Path.Combine(u, AppId, "local", "settings.lua"));
+            }
+            foreach (var f in files.Distinct(StringComparer.OrdinalIgnoreCase))
+            {
                 if (!File.Exists(f)) continue;
                 var s = File.ReadAllText(f);
                 int i = s.IndexOf("activeModsState = {", StringComparison.Ordinal);
@@ -2595,6 +2643,14 @@ namespace MPFever
         {
             return SaveDirs().Select(d => Path.Combine(d, name + ".sav")).Where(File.Exists)
                 .OrderByDescending(File.GetLastWriteTimeUtc).FirstOrDefault();
+        }
+
+        static void DeleteDir(string dir)
+        {
+            if (!Directory.Exists(dir)) return;
+            foreach (var f in Directory.GetFiles(dir, "*", SearchOption.AllDirectories))
+                try { File.SetAttributes(f, FileAttributes.Normal); } catch { }
+            Directory.Delete(dir, true);
         }
 
         internal static void CopyDir(string src, string dst)

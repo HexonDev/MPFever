@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Drawing;
+using System.IO;
 using System.Linq;
 using System.Windows.Forms;
 using static MPFever.L;
@@ -234,6 +235,128 @@ namespace MPFever
                 : T("Si vous hébergez, ils sont envoyés aux autres joueurs : ils sont les mêmes sur tous les jeux.", "When you host, they are sent to the other players: they are the same on every game.")));
             foreach (var o in Options.All.Where(x => x.Session && !x.Expert)) list.Controls.Add(Row(o));
             list.Controls.Add(Heading(T("Réglages personnels", "Your settings")));
+            Control GamePathRow()
+            {
+                var p = new Panel { Width = w, Height = S(92) };
+                bool initCustom = GameInstall.CustomDirOnly || !string.IsNullOrEmpty(GameInstall.ChosenDir);
+                var cb = new CheckBox
+                {
+                    Text = T("Chemin du jeu personnalisé (ne pas chercher dans Steam)", "Custom game path (do not search Steam)"),
+                    Checked = initCustom, AutoSize = false, Width = w, Height = S(24), Font = Theme.Ui(9.75f), ForeColor = Theme.Text, Location = new Point(0, 0),
+                };
+                var help = new Label { AutoSize = false, Width = w - S(20), Height = S(20), Location = new Point(S(20), S(24)), Font = Theme.Ui(8.5f), ForeColor = Theme.Muted };
+                var installBtn = new ModernButton(ButtonKind.Secondary) { Text = T("Installer le mod", "Install mod"), Height = S(34) };
+                installBtn.Fit(20);
+                installBtn.Location = new Point(w - installBtn.Width, S(48));
+                var browse = new ModernButton(ButtonKind.Secondary) { Text = T("Parcourir…", "Browse…"), Height = S(34) };
+                browse.Fit(20);
+                browse.Location = new Point(installBtn.Left - browse.Width - S(6), S(48));
+                var pathInput = new TextBox { Text = GameInstall.ChosenDir ?? "" };
+                var pathBox = new InputBox(pathInput) { Location = new Point(S(20), S(48)), Width = browse.Left - S(20) - S(8), Height = S(34) };
+                bool updating = false;
+
+                string NormalizeDir(string raw)
+                {
+                    var s = (raw ?? "").Trim().Trim('"');
+                    if (s.EndsWith("TransportFever3.exe", StringComparison.OrdinalIgnoreCase))
+                        try { s = Path.GetDirectoryName(s) ?? s; } catch { }
+                    return s.TrimEnd('\\', '/');
+                }
+
+                void RefreshState(bool save)
+                {
+                    var dir = NormalizeDir(pathInput.Text);
+                    bool valid = GameInstall.IsGameDir(dir);
+                    pathInput.Enabled = cb.Checked;
+                    installBtn.Enabled = cb.Checked && valid;
+                    if (save)
+                    {
+                        GameInstall.CustomDirOnly = cb.Checked;
+                        GameInstall.ChosenDir = cb.Checked && dir.Length > 0 ? dir : null;
+                        MainForm.SaveSetting("customgamedir", cb.Checked ? "1" : "0");
+                        MainForm.SaveSetting("gamedir", cb.Checked ? dir : "");
+                        if (cb.Checked && valid)
+                        {
+                            try { GameInstall.InstallNative(dir); } catch { }
+                            try { GameInstall.InstallMod(dir); } catch { }
+                            try { GameInstall.EnsureModActive(); } catch { }
+                        }
+                        Mods.Rescan();
+                    }
+                    if (!cb.Checked)
+                    {
+                        help.Text = T("Indiquez vous-même le dossier de Transport Fever 3 au lieu d'utiliser l'installation Steam.", "Specify the Transport Fever 3 folder yourself instead of using the Steam installation.");
+                        help.ForeColor = Theme.Muted;
+                    }
+                    else if (valid)
+                    {
+                        var modDst = Path.Combine(dir, "mods", "mpfever_1");
+                        bool modThere = Directory.Exists(modDst);
+                        help.Text = modThere
+                            ? F("TransportFever3.exe trouvé – mod installé dans {0}", "TransportFever3.exe found – mod installed in {0}", modDst)
+                            : T("TransportFever3.exe trouvé dans ce dossier.", "TransportFever3.exe found in this folder.");
+                        help.ForeColor = Theme.Success;
+                    }
+                    else if (dir.Length == 0)
+                    {
+                        help.Text = T("Choisissez ou collez le dossier contenant TransportFever3.exe.", "Choose or paste the folder containing TransportFever3.exe.");
+                        help.ForeColor = Theme.Warning;
+                    }
+                    else
+                    {
+                        help.Text = T("TransportFever3.exe introuvable dans ce dossier.", "TransportFever3.exe not found in this folder.");
+                        help.ForeColor = Theme.Danger;
+                    }
+                }
+
+                cb.CheckedChanged += (s, e) => { if (!updating) RefreshState(true); };
+                pathInput.TextChanged += (s, e) =>
+                {
+                    if (updating) return;
+                    updating = true;
+                    if (!cb.Checked && pathInput.Text.Trim().Length > 0) cb.Checked = true;
+                    updating = false;
+                    RefreshState(true);
+                };
+                browse.Click += (s, e) =>
+                {
+                    using (var dlg = new OpenFileDialog
+                    {
+                        Title = T("Choisissez TransportFever3.exe", "Choose TransportFever3.exe"),
+                        Filter = "TransportFever3.exe|TransportFever3.exe|" + T("Tous les fichiers", "All files") + "|*.*",
+                        CheckFileExists = true,
+                    })
+                    {
+                        var cur = NormalizeDir(pathInput.Text);
+                        if (cur.Length > 0 && Directory.Exists(cur)) dlg.InitialDirectory = cur;
+                        if (dlg.ShowDialog(this) != DialogResult.OK) return;
+                        var dir = Path.GetDirectoryName(dlg.FileName) ?? "";
+                        updating = true;
+                        cb.Checked = true;
+                        pathInput.Text = dir;
+                        updating = false;
+                        RefreshState(true);
+                    }
+                };
+                installBtn.Click += (s, e) =>
+                {
+                    var dir = NormalizeDir(pathInput.Text);
+                    if (!GameInstall.IsGameDir(dir)) return;
+                    try { GameInstall.InstallNative(dir); } catch { }
+                    try { GameInstall.InstallMod(dir); } catch { }
+                    try { GameInstall.EnsureModActive(); } catch { }
+                    Mods.Rescan();
+                    RefreshState(false);
+                };
+                RefreshState(false);
+                p.Controls.Add(cb);
+                p.Controls.Add(help);
+                p.Controls.Add(pathBox);
+                p.Controls.Add(browse);
+                p.Controls.Add(installBtn);
+                return p;
+            }
+            list.Controls.Add(GamePathRow());
             foreach (var o in Options.All.Where(x => !x.Session)) list.Controls.Add(Row(o));
 
             var showExpert = new CheckBox { Text = T("Afficher les réglages experts", "Show the expert settings"), AutoSize = false, Width = w, Height = S(34), Font = Theme.Semibold(10f), ForeColor = Theme.Warning };

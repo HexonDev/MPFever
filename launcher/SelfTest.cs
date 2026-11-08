@@ -556,8 +556,10 @@ namespace MPFever
             void Check(bool cond, string what) { Log.W((cond ? "  ok    " : "  FAIL  ") + what); ok &= cond; }
             var root = Path.Combine(Path.GetTempPath(), "mpfever_gamedir_" + Guid.NewGuid().ToString("N"));
             var keptChosen = GameInstall.ChosenDir;
+            var keptCustomOnly = GameInstall.CustomDirOnly;
             try
             {
+                GameInstall.CustomDirOnly = false;
                 var game = Path.Combine(root, "GOG Games", "Transport Fever 3");
                 Directory.CreateDirectory(game);
                 Check(!GameInstall.IsGameDir(game), "game folder: a folder without TransportFever3.exe is not one");
@@ -570,10 +572,14 @@ namespace MPFever
                 Environment.SetEnvironmentVariable("MPFEVER_GAMEDIR", game);
                 Check(GameInstall.FindGameDir() == game, "game folder: MPFEVER_GAMEDIR used");
                 Environment.SetEnvironmentVariable("MPFEVER_GAMEDIR", null);
-                // the chosen folder after the usual places only: here when the game is found nowhere else, never before Steam's copy
                 GameInstall.ChosenDir = game;
                 var found = GameInstall.FindGameDir();
-                Check(found == game || (found != null && !GameInstall.NotSteamCopy(found)), "game folder: the chosen one, after Steam's (" + found + ")");
+                Check(found == game, "game folder: the chosen one used before Steam (" + found + ")");
+                GameInstall.ChosenDir = null;
+                GameInstall.CustomDirOnly = true;
+                Check(GameInstall.FindGameDir() == null, "game folder: CustomDirOnly skips Steam when no custom folder is valid");
+                GameInstall.CustomDirOnly = false;
+                GameInstall.ChosenDir = game;
                 Environment.SetEnvironmentVariable("MPFEVER_GOG", "0");
                 Check(GameInstall.FindGameDir() != game, "game folder: MPFEVER_GOG=0, the chosen one not looked at");
                 Check(!GameInstall.NotSteamCopy(game), "game folder: MPFEVER_GOG=0, any copy taken for Steam's, as before");
@@ -584,6 +590,7 @@ namespace MPFever
                 Environment.SetEnvironmentVariable("MPFEVER_GAMEDIR", null);
                 Environment.SetEnvironmentVariable("MPFEVER_GOG", null);
                 GameInstall.ChosenDir = keptChosen;
+                GameInstall.CustomDirOnly = keptCustomOnly;
                 try { Directory.Delete(root, true); } catch { }
             }
             return ok;
