@@ -565,8 +565,35 @@ namespace MPFever
             settingsLink.Click += (s, e) =>
             {
                 bool guest = relay == null && clients.Count > 0 && Options.HostSession != null;
+                string prevDir = gameDir;
                 using (var d = new OptionsDialog(guest)) d.ShowDialog(this);
                 foreach (var g in games.ToList()) g.WriteSettings();
+                var newDir = GameInstall.FindGameDir();
+                if (!string.Equals(prevDir, newDir, StringComparison.OrdinalIgnoreCase))
+                {
+                    gameDir = newDir;
+                    if (gameDir == null)
+                    {
+                        gameMissing = true;
+                        Log.Err(T("Transport Fever 3 introuvable.", "Transport Fever 3 not found."));
+                        status.Text = T("Jeu introuvable", "Game not found");
+                    }
+                    else
+                    {
+                        bool wasMissing = gameMissing;
+                        gameMissing = false;
+                        Log.W(T("Jeu : ", "Game: ") + gameDir);
+                        if (GameInstall.NotSteamCopy(gameDir))
+                            Log.Warn(T("Copie du jeu hors Steam (GOG ?) : prise en charge expérimentale. Rejoindre par Steam n'y est pas possible, utilisez l'adresse de l'hôte.",
+                                       "A copy of the game not installed by Steam (GOG?): experimental support. Joining through Steam is not possible there, use the host's address."));
+                        else try { GameInstall.EnsureSteamAppId(gameDir); } catch (Exception ex) { Log.W("steam_appid.txt : " + ex.Message); }
+                        try { GameInstall.InstallNative(gameDir); } catch (Exception ex) { Log.W("winhttp.dll: " + ex.Message); }
+                        try { GameInstall.EnsureModActive(); } catch (Exception ex) { Log.W("settings.lua: " + ex.Message); }
+                        try { GameInstall.InstallMod(gameDir); } catch (Exception ex) { Log.Warn(T("Installation du mod : ", "Mod installation: ") + ex.Message); }
+                        if (wasMissing && !running && MenuModeDefault && !autotest && !ServerMode) StartMenuMode();
+                    }
+                    UpdateDashboard();
+                }
             };
             var kofiText = T("♥ Soutenir MPFever", "♥ Support MPFever");
             var kofi = new Label
@@ -620,11 +647,23 @@ namespace MPFever
         /// <summary>Before the window: the language saved in mpfever_settings.txt (lang=), else the game's, else Windows'.</summary>
         public static void InitLanguage()
         {
+            LoadGameDirSetting();
             LoadPersonalMods();
             LoadSettings().TryGetValue("lang", out var saved);
             var code = L.Detect(saved, out var source);
             L.Set(code);
             Log.W(T("Langue : ", "Language: ") + L.Name + " (" + SourceText(source) + ")");
+        }
+
+        public static void LoadGameDirSetting()
+        {
+            try
+            {
+                var st = LoadSettings();
+                GameInstall.ChosenDir = st.TryGetValue("gamedir", out var gd) && !string.IsNullOrWhiteSpace(gd) ? gd.Trim() : null;
+                GameInstall.CustomDirOnly = st.TryGetValue("customgamedir", out var cd) && cd.Trim() == "1";
+            }
+            catch { }
         }
 
         /// <summary>This player's choices of personal mods (see Mods): taken for personal by hand, and found personal but off.</summary>
@@ -1216,7 +1255,7 @@ namespace MPFever
         bool InitFindGame()
         {
             // (0.6.3) the folder the player chose for a game MPFever does not find itself (GOG, a folder of its own)
-            try { if (LoadSettings().TryGetValue("gamedir", out var gd)) GameInstall.ChosenDir = gd; } catch { }
+            LoadGameDirSetting();
             gameDir = GameInstall.FindGameDir();
             if (gameDir == null && !autotest && !ServerMode) gameDir = AskGameDir();
             if (gameDir == null) { gameMissing = true; Log.Err(T("Transport Fever 3 introuvable.", "Transport Fever 3 not found.")); status.Text = T("Jeu introuvable", "Game not found"); return false; }
@@ -1258,7 +1297,7 @@ namespace MPFever
                 Log.Warn(T("Version de diagnostic : journaux détaillés (file des identifiants, état à chaque contrôle). Après une resynchronisation, envoyez le rapport de chaque joueur.",
                            "Diagnostic build: detailed logs (the free-id queue, the state at every check). After a resynchronisation, send every player's report."));
             try { GameInstall.EnsureModActive(); } catch (Exception e) { Log.W("settings.lua: " + e.Message); }
-            try { GameInstall.InstallMod(); } catch (Exception e) { Log.Warn(T("Installation du mod : ", "Mod installation: ") + e.Message); }
+            try { GameInstall.InstallMod(gameDir); } catch (Exception e) { Log.Warn(T("Installation du mod : ", "Mod installation: ") + e.Message); }
             // (0.7.9, #136) another copy of the mod in the game's folders, which the game would take (see ModCopies)
             if (!autotest) FindStaleMods();
             if (!autotest && !ServerMode) WarnIncompatibleMods();
@@ -1340,7 +1379,9 @@ namespace MPFever
                 var dir = Path.GetDirectoryName(dlg.FileName);
                 if (!GameInstall.IsGameDir(dir)) return null;
                 GameInstall.ChosenDir = dir;
+                GameInstall.CustomDirOnly = true;
                 SaveSetting("gamedir", dir);
+                SaveSetting("customgamedir", "1");
                 return dir;
             }
         }
