@@ -475,6 +475,7 @@ namespace MPFever
     {
         float fraction;
 
+        [System.ComponentModel.DesignerSerializationVisibility(System.ComponentModel.DesignerSerializationVisibility.Hidden)]
         public float Value { get => fraction; set { fraction = Math.Max(0f, Math.Min(1f, value)); Invalidate(); } }
 
         public ProgressLine()
