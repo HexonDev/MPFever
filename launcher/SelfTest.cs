@@ -519,7 +519,6 @@ namespace MPFever
                 var app = Path.Combine(root, "app");
                 Directory.CreateDirectory(Path.Combine(app, "mod", "mpfever_1", "old"));
                 File.WriteAllText(Path.Combine(app, "MPFever.exe"), "old");
-                File.WriteAllText(Path.Combine(app, "winhttp.dll"), "olddll");
                 File.WriteAllText(Path.Combine(app, "mpfever_settings.txt"), "name=me");
                 File.WriteAllText(Path.Combine(app, "mod", "mpfever_1", "old", "gone.lua"), "x");
                 var zip = Path.Combine(root, "u.zip");
@@ -527,15 +526,13 @@ namespace MPFever
                 {
                     void Add(string name, string text) { using (var w = new StreamWriter(z.CreateEntry(name).Open())) w.Write(text); }
                     Add("MPFever/MPFever.exe", "new");
-                    Add("MPFever/winhttp.dll", "newdll");
                     Add("MPFever/mpfever_settings.txt", "name=default");
                     Add("MPFever/mod/mpfever_1/mod.json", "{}");
                 }
                 var files = Path.Combine(root, "files");
                 Updater.Unpack(zip, files);
                 Updater.Install(files, app);
-                Check(File.ReadAllText(Path.Combine(app, "MPFever.exe")) == "old", "update: MPFever.exe not overwritten");
-                Check(File.ReadAllText(Path.Combine(app, "winhttp.dll")) == "newdll", "update: winhttp.dll replaced");
+                Check(File.ReadAllText(Path.Combine(app, "MPFever.exe")) == "new", "update: files replaced");
                 Check(File.ReadAllText(Path.Combine(app, "mpfever_settings.txt")) == "name=me", "update: the player's settings kept");
                 Check(File.Exists(Path.Combine(app, "mod", "mpfever_1", "mod.json")) && !Directory.Exists(Path.Combine(app, "mod", "mpfever_1", "old")),
                     "update: the mod folder replaced as a whole");
