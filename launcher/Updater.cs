@@ -39,7 +39,9 @@ namespace MPFever
         public const int CheckTimeoutMs = 6000;
         const string OldDirName = ".update_old";
         /// <summary>Files of the player that an update never replaces.</summary>
-        static readonly HashSet<string> Keep = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "mpfever_settings.txt", "mpfever_server.properties" };
+        static readonly HashSet<string> Keep = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "mpfever_settings.txt", "mpfever_server.properties", "MPFever.exe" };
+        /// <summary>Only the mod folder and winhttp.dll are replaced by an update; MPFever.exe is never overwritten.</summary>
+        static readonly HashSet<string> AllowedUpdateEntries = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "mod", "winhttp.dll" };
 
         public static string AppDir => AppDomain.CurrentDomain.BaseDirectory;
         static string TempDir => Path.Combine(Path.GetTempPath(), "mpfever_update");
@@ -134,6 +136,23 @@ namespace MPFever
             return req;
         }
 
+        /// <summary>The effective version for update checks: the newer of MainForm.Version and the last installed update version.</summary>
+        public static string InstalledVersion()
+        {
+            var cur = MainForm.Version;
+            try
+            {
+                if (MainForm.LoadSettings().TryGetValue("updated_version", out var uv) && !string.IsNullOrWhiteSpace(uv))
+                {
+                    var a = ParseVersion(cur);
+                    var b = ParseVersion(uv);
+                    if (a != null && b != null && CompareVersions(b, a) > 0) return uv.Trim();
+                }
+            }
+            catch { }
+            return cur;
+        }
+
         /// <summary>The newest release when it is newer than this launcher, else null (throws when GitHub cannot be reached).</summary>
         public static UpdateInfo Check()
         {
@@ -142,7 +161,7 @@ namespace MPFever
             req.AutomaticDecompression = DecompressionMethods.GZip | DecompressionMethods.Deflate;
             using (var resp = req.GetResponse())
             using (var r = new StreamReader(resp.GetResponseStream(), Encoding.UTF8))
-                return Newest(r.ReadToEnd(), MainForm.Version, MainForm.ServerMode);
+                return Newest(r.ReadToEnd(), InstalledVersion(), MainForm.ServerMode);
         }
 
         /// <summary>Downloads the update, puts its files into MPFever's folder (see <see cref="Install"/>).
@@ -159,6 +178,7 @@ namespace MPFever
             var files = Path.Combine(work, "files");
             Unpack(zip, files);
             Install(files, AppDir);
+            try { if (!string.IsNullOrWhiteSpace(u.Version)) MainForm.SaveSetting("updated_version", u.Version); } catch { }
             Log.Ok(F("MPFever {0} installé : redémarrage", "MPFever {0} installed: restarting", u.Version));
         }
 
@@ -235,6 +255,7 @@ namespace MPFever
                 foreach (var src in Directory.GetFileSystemEntries(files))
                 {
                     var name = Path.GetFileName(src);
+                    if (!AllowedUpdateEntries.Contains(name)) continue;
                     var target = Path.Combine(appDir, name);
                     bool isDir = Directory.Exists(src);
                     if (!isDir && Keep.Contains(name) && File.Exists(target)) continue;
