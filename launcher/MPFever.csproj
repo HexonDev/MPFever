@@ -1,24 +1,22 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
     <OutputType>WinExe</OutputType>
-    <TargetFramework>net48</TargetFramework>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <UseWindowsForms>true</UseWindowsForms>
+    <ImplicitUsings>disable</ImplicitUsings>
     <LangVersion>latest</LangVersion>
     <AssemblyName>MPFever</AssemblyName>
     <RootNamespace>MPFever</RootNamespace>
     <Version>0.1.0</Version>
     <Nullable>disable</Nullable>
+    <!-- WebRequest/ServicePointManager (updates, reports, UPnP, server list) are kept; HttpClient is a change of its own -->
+    <NoWarn>$(NoWarn);SYSLIB0014</NoWarn>
     <!-- a warning stops the build (build.bat, CI): none goes into a release unseen -->
     <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
     <AppendTargetFrameworkToOutputPath>false</AppendTargetFrameworkToOutputPath>
     <PlatformTarget>x64</PlatformTarget>
     <ApplicationIcon>app.ico</ApplicationIcon>
   </PropertyGroup>
-  <ItemGroup>
-    <Reference Include="System.Windows.Forms" />
-    <Reference Include="System.Drawing" />
-    <Reference Include="System.IO.Compression" />
-    <Reference Include="System.IO.Compression.FileSystem" />
-  </ItemGroup>
   <ItemGroup>
     <!-- texts of the other languages (French and English are in the code), keyed by the English text -->
     <EmbeddedResource Include="lang.json" LogicalName="lang.json" />

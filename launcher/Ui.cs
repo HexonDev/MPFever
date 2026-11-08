@@ -154,6 +154,7 @@ namespace MPFever
         bool hover, down, active;
 
         /// <summary>Segment buttons: the option currently in effect.</summary>
+        [System.ComponentModel.DesignerSerializationVisibility(System.ComponentModel.DesignerSerializationVisibility.Hidden)]
         public bool Active { get => active; set { if (active != value) { active = value; Invalidate(); } } }
 
         /// <summary>A small globe in front of the text (language button).</summary>

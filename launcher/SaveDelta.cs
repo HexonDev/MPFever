@@ -84,7 +84,7 @@ namespace MPFever
             Parallel.Invoke(
                 () => { baseCuts = Cut(baseData, o); baseKeys = HashChunks(baseData, baseCuts); },
                 () => { newCuts = Cut(newData, o); },
-                () => { using (var h = new SHA256Cng()) sha = h.ComputeHash(newData); });
+                () => { using (var h = SHA256.Create()) sha = h.ComputeHash(newData); });
 
             var index = new Dictionary<ulong, int>(baseKeys.Length);
             for (int i = 0; i < baseKeys.Length; i++)
@@ -180,7 +180,7 @@ namespace MPFever
             }
             catch (IndexOutOfRangeException) { throw Bad(); }
 
-            using (var h = new SHA256Cng())
+            using (var h = SHA256.Create())
             {
                 byte[] got = h.ComputeHash(result);
                 for (int i = 0; i < 32; i++)
