@@ -387,20 +387,37 @@ namespace MPFever
 
         public string ReadLine()
         {
-            var line = new MemoryStream();
-            while (true)
+            // Most messages fit in the receive buffer: decode there, without an intermediate array.
+            // A line spanning reads needs a separate buffer (including split UTF-8 characters).
+            MemoryStream line = null;
+            try
             {
-                // (a line the end of the connection cut is not a message: its sender still has it, and sends it again)
-                if (!Fill()) return null;
-                int start = pos;
-                while (pos < count && buf[pos] != (byte)'\n') pos++;
-                line.Write(buf, start, pos - start);
-                if (pos < count) { pos++; break; }
+                while (true)
+                {
+                    // A line cut by the end of a connection is discarded: its sender sends it again.
+                    if (!Fill()) return null;
+                    var available = buf.AsSpan(pos, count - pos);
+                    int newline = available.IndexOf((byte)'\n');
+                    if (newline >= 0)
+                    {
+                        var last = available.Slice(0, newline);
+                        pos += newline + 1;
+                        if (line == null) return LineText(last);
+                        line.Write(last);
+                        return LineText(line.GetBuffer().AsSpan(0, (int)line.Length));
+                    }
+                    if (line == null) line = new MemoryStream();
+                    line.Write(available);
+                    pos = count;
+                }
             }
-            var bytes = line.ToArray();
-            int n = bytes.Length;
-            if (n > 0 && bytes[n - 1] == (byte)'\r') n--;
-            return Encoding.UTF8.GetString(bytes, 0, n);
+            finally { line?.Dispose(); }
+        }
+
+        static string LineText(ReadOnlySpan<byte> bytes)
+        {
+            if (!bytes.IsEmpty && bytes[bytes.Length - 1] == (byte)'\r') bytes = bytes.Slice(0, bytes.Length - 1);
+            return Encoding.UTF8.GetString(bytes);
         }
 
         public byte[] ReadBytes(int n)
@@ -465,7 +482,7 @@ namespace MPFever
             if (string.CompareOrdinal(s, i, "nil", 0, 3) == 0) { i += 3; return null; }
             int st = i;
             while (i < s.Length && "+-0123456789.eE".IndexOf(s[i]) >= 0) i++;
-            double.TryParse(s.Substring(st, i - st), NumberStyles.Float, CultureInfo.InvariantCulture, out var d);
+            double.TryParse(s.AsSpan(st, i - st), NumberStyles.Float, CultureInfo.InvariantCulture, out var d);
             return d;
         }
 

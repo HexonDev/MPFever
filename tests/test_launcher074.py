@@ -44,7 +44,7 @@ check('if (!autotest && !ServerMode && Environment.GetEnvironmentVariable("MPFEV
       "L2. the mod is put into the game beside the window (not for the autotests nor a server)")
 check("busyBar.Visible = player && installing;" in main and "launchBtn.Enabled = !installing;" in main,
       "L2. a moving bar meanwhile, the start button waits for it")
-check("GameInstall.InstallMod()" in main[main.index("void InitInstall()"):main.index("void InitFinish()")]
+check("GameInstall.InstallMod(gameDir)" in main[main.index("void InitInstall()"):main.index("void InitFinish()")]
       and "WarnNativeMissing();" in fin, "L2. the files in the background, the warnings back on the window")
 ls = menu[menu.index("local function listSaves()"):menu.index("-- The mods of a savegame (MPFever left out)")]
 check('not name:find("^MPFever resync")' not in ls and 'local function isResyncSave(name)' in menu,
