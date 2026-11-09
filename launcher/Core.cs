@@ -833,7 +833,7 @@ namespace MPFever
             if (Reporter.OtherGamesRunning(-1) > 0) OtherGameSeen = true;
             // Each game owns its endpoint, including two independently controlled local test games.
             psi.EnvironmentVariables.Remove("MPFEVER_PIPE");
-            if (psi.EnvironmentVariables["MPFEVER_IPC_PROBE"] == "1")
+            if (psi.Environment.TryGetValue("MPFEVER_IPC_PROBE", out var probe) && probe == "1")
             {
                 pipeProbe = new PipeProbe(text => Log.W("[" + Name + "] " + text));
                 psi.EnvironmentVariables["MPFEVER_PIPE"] = pipeProbe.Name;

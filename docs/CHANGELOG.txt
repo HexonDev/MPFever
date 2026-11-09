@@ -1,6 +1,12 @@
 MPFever - Changelog
 ===================
 
+0.7.13-beta.2 - 2026-11-09: normal game launch works without the pipe-probe environment variable
+  - FIX: starting the game with MPFEVER_IPC_PROBE unset threw KeyNotFoundException in GameLink.Launch. The optional
+    environment key is now read with TryGetValue; absent or 0 keeps the probe disabled, and 1 enables it.
+  - TEST: regression checks run the actual game-launch setup with the switch absent and 0, using a deliberately missing
+    game executable to verify that setup reaches Process.Start without starting a real game or throwing a dictionary error.
+
 0.7.13-beta.1 - 2026-11-09: .NET 10 packages, Lua polling optimizations and an opt-in named-pipe probe
   - CHANGE: the player and dedicated-server launcher run on .NET 10, with the Windows x64 runtime included in each archive.
     No separate .NET installation is needed. The standalone server-list service remains on .NET Framework 4.8.

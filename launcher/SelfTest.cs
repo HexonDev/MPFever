@@ -90,6 +90,31 @@ namespace MPFever
             var token = deadline.Token;
             try
             {
+                // Exercise the real launch path without a game: a missing optional switch must reach Process.Start,
+                // where the deliberately absent executable fails normally, rather than throwing KeyNotFoundException.
+                string oldProbe = Environment.GetEnvironmentVariable("MPFEVER_IPC_PROBE");
+                string oldRoleEnv = Environment.GetEnvironmentVariable("MPFEVER_ENV_SOLO");
+                string emptyGame = Path.Combine(Path.GetTempPath(), "mpfever-launch-test-" + Guid.NewGuid().ToString("N"));
+                Directory.CreateDirectory(emptyGame);
+                try
+                {
+                    Environment.SetEnvironmentVariable("MPFEVER_ENV_SOLO", null);
+                    foreach (string setting in new string[] { null, "0" })
+                    {
+                        Environment.SetEnvironmentVariable("MPFEVER_IPC_PROBE", setting);
+                        using var game = new GameLink("LaunchProbeOff", "solo");
+                        bool reachedStart = false;
+                        try { game.Launch(emptyGame); }
+                        catch (System.ComponentModel.Win32Exception error) when (error.NativeErrorCode == 2 || error.NativeErrorCode == 3) { reachedStart = true; }
+                        Check(reachedStart, "normal game launch with probe " + (setting ?? "unset") + " reaches Process.Start without a dictionary exception");
+                    }
+                }
+                finally
+                {
+                    Environment.SetEnvironmentVariable("MPFEVER_IPC_PROBE", oldProbe);
+                    Environment.SetEnvironmentVariable("MPFEVER_ENV_SOLO", oldRoleEnv);
+                    Directory.Delete(emptyGame);
+                }
                 using var server = new PipeProbe(null);
                 using var other = new PipeProbe(null);
                 Check(server.Name != other.Name, "independent game endpoints");
