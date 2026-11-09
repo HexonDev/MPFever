@@ -19,6 +19,10 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "10.0.x"
+
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
@@ -91,8 +95,7 @@ jobs:
               $sig = Get-AuthenticodeSignature (Join-Path $p[0] $f)
               if ($sig.Status -ne 'Valid') { throw "$($p[0])\$f is not signed: $($sig.Status)" }
             }
-            # (Windows PowerShell's zip, as build.bat makes it)
-            powershell -NoProfile -Command "Add-Type -AssemblyName System.IO.Compression.FileSystem; [IO.Compression.ZipFile]::CreateFromDirectory((Resolve-Path '$($p[0])'), (Join-Path (Resolve-Path 'signed') '$($p[1])'), 'Optimal', `$true)"
+            python tools/makezip.py $p[0] (Join-Path 'signed' $p[1])
             if ($LASTEXITCODE -ne 0) { throw "zip of $($p[0]) failed" }
           }
 

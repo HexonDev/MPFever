@@ -6,6 +6,10 @@ using System.Net;
 using System.Net.Sockets;
 using System.Text;
 using System.Threading;
+using System.Threading.Tasks;
+using System.IO.Pipes;
+using System.Buffers.Binary;
+using System.Diagnostics;
 
 namespace MPFever
 {
@@ -72,8 +76,134 @@ namespace MPFever
             ok &= RunReport079();
             ok &= RunModIdTop0712();
             ok &= RunNetReader();
+            ok &= RunLocalMenuLaunch();
+            ok &= RunPipeProbe().GetAwaiter().GetResult();
             Log.W(ok ? "SELFTEST OK" : "SELFTEST FAILED");
             return ok ? 0 : 1;
+        }
+
+        internal static async Task<bool> RunPipeProbe()
+        {
+            bool ok = true;
+            void Check(bool value, string what) { Log.W((value ? "ok    " : "FAIL  ") + "pipe probe: " + what); ok &= value; }
+            using var deadline = new CancellationTokenSource(TimeSpan.FromSeconds(20));
+            var token = deadline.Token;
+            try
+            {
+                using var server = new PipeProbe(null);
+                using var other = new PipeProbe(null);
+                Check(server.Name != other.Name, "independent game endpoints");
+                static byte[] Ping(uint id)
+                {
+                    var frame = new byte[] { 8, 0, 0, 0, 0, 0, 0, 0, (byte)'p', (byte)'i', (byte)'n', (byte)'g' };
+                    BinaryPrimitives.WriteUInt32LittleEndian(frame.AsSpan(4), id);
+                    return frame;
+                }
+                using (var client = new NamedPipeClientStream(".", server.Name, PipeDirection.InOut, PipeOptions.Asynchronous))
+                {
+                    await client.ConnectAsync(token);
+                    var ping = Ping(7);
+                    foreach (byte b in ping) await client.WriteAsync(new[] { b }.AsMemory(), token);
+                    var reply = new byte[12];
+                    await client.ReadExactlyAsync(reply.AsMemory(), token);
+                    Check(BinaryPrimitives.ReadUInt32LittleEndian(reply) == 8 && BinaryPrimitives.ReadUInt32LittleEndian(reply.AsSpan(4)) == 7
+                        && Encoding.ASCII.GetString(reply, 8, 4) == "pong", "fragmented ping returns its pong and ticket");
+                    var batch = Ping(8).Concat(Ping(9)).ToArray();
+                    await client.WriteAsync(batch.AsMemory(), token);
+                    var replies = new byte[24];
+                    await client.ReadExactlyAsync(replies.AsMemory(), token);
+                    Check(BinaryPrimitives.ReadUInt32LittleEndian(replies.AsSpan(4)) == 8 && BinaryPrimitives.ReadUInt32LittleEndian(replies.AsSpan(16)) == 9,
+                        "coalesced frames keep their order");
+                    await client.WriteAsync(new byte[] { 255, 255, 255, 127 }.AsMemory(), token);
+                    Check(await client.ReadAsync(reply.AsMemory(), token) == 0, "oversized frame is disconnected before allocation");
+                }
+                using (var client = new NamedPipeClientStream(".", server.Name, PipeDirection.InOut, PipeOptions.Asynchronous))
+                {
+                    await client.ConnectAsync(token);
+                    var invalid = Ping(10); invalid[8] = (byte)'x';
+                    await client.WriteAsync(invalid.AsMemory(), token);
+                    Check(await client.ReadAsync(new byte[1].AsMemory(), token) == 0, "unknown command is disconnected");
+                }
+                // Optional integration helper is compiled from the production native worker, without a game.
+                string native = Environment.GetEnvironmentVariable("MPFEVER_IPC_NATIVE_TEST");
+                if (!string.IsNullOrEmpty(native))
+                {
+                    var start = new ProcessStartInfo(native) { UseShellExecute = false, CreateNoWindow = true };
+                    start.Environment["MPFEVER_PIPE"] = server.Name;
+                    using var process = Process.Start(start);
+                    await process.WaitForExitAsync(token);
+                    Check(process.ExitCode == 0, "production native worker: 32 pongs, queue bound, owner isolation, Lua stack/registry and coroutines");
+                    foreach (int mode in new[] { 1, 2, 3 })
+                    {
+                        string peerName = "mpfever-probe-" + Guid.NewGuid().ToString("N");
+                        using var peer = new NamedPipeServerStream(peerName, PipeDirection.InOut, 1,
+                            PipeTransmissionMode.Byte, PipeOptions.Asynchronous | PipeOptions.CurrentUserOnly);
+                        start.Environment["MPFEVER_PIPE"] = peerName;
+                        start.Environment["MPFEVER_IPC_EXPECT"] = mode.ToString();
+                        using var probe = Process.Start(start);
+                        await peer.WaitForConnectionAsync(token);
+                        var frame = new byte[12];
+                        await peer.ReadExactlyAsync(frame.AsMemory(), token);
+                        if (mode != 2)
+                        {
+                            frame[9] = (byte)'o';
+                            if (mode == 3) frame[4] ^= 1; // a pong with the wrong ticket must never match
+                            foreach (byte b in frame) await peer.WriteAsync(new[] { b }.AsMemory(), token);
+                        }
+                        await probe.WaitForExitAsync(token);
+                        Check(probe.ExitCode == 0, mode == 1 ? "native client handles a fragmented pong"
+                            : mode == 2 ? "native client times out an unresponsive peer" : "native client rejects a mismatched ticket");
+                    }
+                }
+                server.Dispose(); other.Dispose();
+                await Task.WhenAll(server.Completion, other.Completion).WaitAsync(token);
+                Check(true, "dispose cancels both an idle connection and a pending accept");
+            }
+            catch (Exception e) { Check(false, e.ToString()); }
+            return ok;
+        }
+
+        static bool RunLocalMenuLaunch()
+        {
+            bool ok = true, dev = MainForm.Dev, menu = MainForm.MenuModeDefault;
+            string player = MainForm.LocalPlayerName;
+            string settings = MainForm.SettingsFileForTest;
+            string testSettings = Path.Combine(Path.GetTempPath(), "mpfever-local-menu-" + Guid.NewGuid().ToString("N") + ".txt");
+            void Check(bool value, string what) { Log.W((value ? "ok    " : "FAIL  ") + "local menus: " + what); ok &= value; }
+            try
+            {
+                MainForm.ConfigureLaunchMode(new string[0], false);
+                Check(!MainForm.Dev && MainForm.MenuModeDefault && MainForm.LocalPlayerName == null, "ordinary launch keeps the normal lobby flow");
+                MainForm.SettingsFileForTest = testSettings;
+                MainForm.RememberPlayerName("PrimaryPlayer");
+                MainForm.ConfigureLaunchMode(new[] { "--dev" }, false);
+                Check(MainForm.Dev && !MainForm.MenuModeDefault && MainForm.LocalPlayerName == null, "developer window still offers the manual local test");
+                MainForm.ConfigureLaunchMode(new[] { "--autotest", "save" }, true);
+                Check(MainForm.Dev && !MainForm.MenuModeDefault && MainForm.LocalPlayerName == null, "automated scenarios keep their linked setup");
+                string second = "Player two \"quoted\"";
+                string exe = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "MPFever.exe");
+                var start = MainForm.LocalMenuPlayerStart(exe, second);
+                Check(start.FileName == exe && !start.UseShellExecute && start.WorkingDirectory == AppDomain.CurrentDomain.BaseDirectory.TrimEnd(Path.DirectorySeparatorChar),
+                    "the second instance uses the same executable and its own process");
+                Check(start.ArgumentList.SequenceEqual(new[] { "--local-player", second, "--launch" }),
+                    "only menu/name/launch arguments, with spaces and quotes preserved and no automatic join");
+                MainForm.ConfigureLaunchMode(start.ArgumentList.ToArray(), false);
+                Check(MainForm.Dev && MainForm.MenuModeDefault && MainForm.LocalPlayerName == second, "the second player starts directly in the normal menu flow, with updates off");
+                MainForm.RememberPlayerName("SecondRenamed");
+                Check(MainForm.LocalPlayerName == "SecondRenamed" && MainForm.LoadSettings()["name"] == "PrimaryPlayer", "the second player can rename without replacing the primary player's saved name");
+                MainForm.ConfigureLaunchMode(new[] { "--local-player", "--launch" }, false);
+                Check(MainForm.LocalPlayerName == Environment.UserName + "_2" && MainForm.MenuModeDefault, "a missing name uses a distinct fallback without consuming the next option");
+                MainForm.ConfigureLaunchMode(new string[0], false);
+                Check(MainForm.LocalPlayerName == null, "local identity does not leak into ordinary startup");
+            }
+            catch (Exception e) { Check(false, e.ToString()); }
+            finally
+            {
+                MainForm.Dev = dev; MainForm.MenuModeDefault = menu; MainForm.LocalPlayerName = player;
+                MainForm.SettingsFileForTest = settings;
+                try { File.Delete(testSettings); } catch { }
+            }
+            return ok;
         }
 
         // Stream.Read can split anywhere, including inside UTF-8, CRLF, and a binary payload.
@@ -805,7 +935,11 @@ namespace MPFever
                 for (int i = 0; i < 20; i++) System.Threading.Thread.Sleep(5);
                 double avg = sw.Elapsed.TotalMilliseconds / 20;
                 if (on) FineTimer.End();
-                Check(avg < 10, "timer: Thread.Sleep(5) lasts " + avg.ToString("0.0", System.Globalization.CultureInfo.InvariantCulture) + " ms (15.6 with the system's timer)");
+                // Sleep has no scheduling deadline, even after a successful timeBeginPeriod; Windows 11 may also
+                // ignore the requested resolution for an occluded/headless process. Measure this as a diagnostic,
+                // while the API success and disabled-mode checks above/below remain release gates.
+                // https://learn.microsoft.com/en-us/windows/win32/api/timeapi/nf-timeapi-timebeginperiod
+                Log.W("timer measurement: Thread.Sleep(5) averages " + avg.ToString("0.0", System.Globalization.CultureInfo.InvariantCulture) + " ms (diagnostic; scheduler dependent)");
                 Environment.SetEnvironmentVariable("MPFEVER_TIMER1MS", "0");
                 Check(!FineTimer.Begin(), "timer: MPFEVER_TIMER1MS=0 asks nothing");
             }

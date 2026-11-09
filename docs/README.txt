@@ -167,7 +167,7 @@ MPFever connects to the address you type (or the one of the Steam invitation you
 The only other connections:
 - At startup, before the game starts, and every 30 minutes, it asks GitHub
   (api.github.com) for the newest MPFever release. A newer one is installed by itself:
-  at startup at once (downloaded from github.com/dkdknight/MPFever/releases, checked,
+  at startup at once (downloaded from github.com/HexonDev/MPFever/releases, checked,
   MPFever's files replaced, your mpfever_settings.txt and logs kept, MPFever started
   again); found later, when you close the game; a dedicated server installs it and
   restarts once nobody is connected. Every player needs the same version, so everybody

@@ -46,6 +46,12 @@ local function log(msg)
 	if f then f:write(os.date("%H:%M:%S") .. " " .. tostring(msg) .. NL) f:close() end
 end
 
+local pipeProbe
+if os.getenv("MPFEVER_IPC_PROBE") == "1" then
+	local ok, probe = pcall(require, "mpfever_1::/mpfever_ipc_probe.lua")
+	if ok then pipeProbe = probe else log("pipe probe: " .. tostring(probe)) end
+end
+
 local function readFile(name)
 	local f = IO.open(DIR .. BS .. name, "rb")
 	if not f then return nil end
@@ -67,6 +73,7 @@ end
 -- tabs for a moment, then the session again, over and over while the host's game came in)
 local lastState, endSeen = nil, false
 local function readState()
+	if pipeProbe then pipeProbe.tick(log, "menu") end
 	local st = {}
 	for line in (readFile("menu_state.txt") or ""):gmatch("[^" .. NL .. "]+") do
 		local k, v = line:match("^([%w_]+)=(.*)$")

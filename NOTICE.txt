@@ -41,3 +41,10 @@ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
 LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
+
+Bundled runtime
+---------------
+The Windows x64 player and dedicated-server archives include the .NET 10 runtime.
+Its licenses and third-party notices are included in the licenses/ directory; any
+publish-output LICENSE.txt is preserved as licenses/dotnet-LICENSE.txt. The standalone
+server-list service remains a separate .NET Framework 4.8 application.

@@ -10,7 +10,7 @@ C.TAB = string.char(9)
 -- (0.7.9) this mod's version, the same as MPFever.exe's (tests/check_repo.py): the game says it in its "hello", and the launcher
 -- warns when the game runs another copy of the mod than the one it installed (issue #136: an old copy in the game's own
 -- mods folder, mods/release/MPFever/mod/mpfever_1, which the game takes before the player's mods folder)
-C.MODVERSION = "0.7.12"
+C.MODVERSION = "0.7.13-beta.1"
 -- (0.7.11, #156) a custom entity's commands that name one (its move, its state, its removal), see the bridge's guard
 C.CUSTOM_ENTITY_FNS = { makeCustomEntityUpdateTransformationCmd = true, makeCustomEntityUpdateStateCmd = true, makeCustomEntityDestroyCmd = true }
 -- (0.7.11, #156/#158) Is entity e no mod's custom entity on this game? Such a command names it by its id on the game that made
@@ -47,6 +47,10 @@ C.ROLE = os.getenv("MPFEVER_ROLE") or "solo"
 -- the game of a dedicated server (MPFever.exe --server): it hosts the world and plays no company of its own
 C.SERVER = os.getenv("MPFEVER_SERVER") == "1"
 C.ACTIVE = C.DIR ~= nil and C.DIR ~= "" and C.IO ~= nil
+-- Kept on C so the game's UI and simulation callbacks can both drive their VM's opt-in probe.
+if os.getenv("MPFEVER_IPC_PROBE") == "1" then
+	C.pipeProbe = ug_require("mpfever_1::/mpfever_ipc_probe.lua")
+end
 
 -- Settings of the launcher's settings window (settings.txt in the session folder, "KEY=value" lines, written by MPFever.exe:
 -- the host's session settings, the same on every game, and this player's own). They take the place of the environment
@@ -134,12 +138,13 @@ end
 -- A file read again every frame, which the launcher appends to: kept open (never closed). An open of a file another program has
 -- just written waits for the antivirus to read it again (about 9 ms with Windows Defender, measured), several times a second
 -- during a session; through a kept handle the appended lines are read in microseconds. (The launcher empties these files, it
--- never deletes them: the handle stays the file's.) A missing file is looked for again twice a second.
+-- never deletes them: the handle stays the file's.) A missing file is looked for again twice a second by default;
+-- retryDelay=0 keeps command results and bindings responsive when their file first appears.
 C.kept, C.keptMissed = {}, {}
-function C.keptOpen(path)
+function C.keptOpen(path, retryDelay)
 	local f = C.kept[path]
 	if f then return f end
-	if not C.IO or (C.keptMissed[path] and os.clock() - C.keptMissed[path] < 0.5) then return nil end
+	if not C.IO or (C.keptMissed[path] and os.clock() - C.keptMissed[path] < (retryDelay or 0.5)) then return nil end
 	f = C.IO.open(path, "rb")
 	if f then C.kept[path] = f; C.keptMissed[path] = nil else C.keptMissed[path] = os.clock() end
 	return f

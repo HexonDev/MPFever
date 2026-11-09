@@ -17,6 +17,10 @@ extern "C" void* memcpy(void* d, const void* s, size_t n) { u8* a = (u8*)d; cons
 extern "C" void* memset(void* d, int v, size_t n) { u8* a = (u8*)d; while (n--) *a++ = (u8)v; return d; }
 extern "C" int memcmp(const void* x, const void* y, size_t n) { const u8* a = (const u8*)x; const u8* b = (const u8*)y; for (; n; n--, a++, b++) if (*a != *b) return *a < *b ? -1 : 1; return 0; }
 
+#include "mpf_lua_ipc.h"
+#include "mpf_lua_ipc_build.h"
+static bool g_ipcProbeRequested = false, g_ipcLuaReady = false;
+
 static const u32 EXPECTED_TIMESTAMP = 0x6ab69fe5;   // TransportFever3.exe build 40408
 
 static uptr g_base = 0, g_textStart = 0, g_textEnd = 0;
@@ -5355,6 +5359,12 @@ static DWORD WINAPI Init(void*)
     Buf b;
     b.str("mpfever_native v3 loaded, base ").hex(g_base).str(", build stamp ").hex(fh->TimeDateStamp);
     LogLine(b);
+    if (g_ipcProbeRequested) {
+        char name[80] = {};
+        GetEnvironmentVariableA("MPFEVER_PIPE", name, sizeof(name));
+        bool started = g_ipcLuaReady && MpfIpcStart(name);
+        Buf info; info.str(started ? "pipe probe: worker started, game Lua API verified" : "pipe probe: disabled (unsupported Lua API/build or invalid endpoint)"); LogLine(info);
+    }
     { Buf t; t.str(g_scriptPoolPatched ? "game scripts: own pool, one worker" : "game scripts: pool NOT patched"); LogLine(t); }
     if (g_simPoolA || g_simPoolB) { Buf t; t.str("pool sizes forced: ").hex(g_simPoolA).str(",").hex(g_simPoolB); LogLine(t); }
     { Buf t; t.str(g_mathOther ? "mathematics: another C runtime's (MPFEVER_MATHDLL), functions " : (g_mathPatched ? "mathematics: MPFever's own, functions " : "mathematics: Windows' (not replaced), functions ")).hex(g_mathPatched); LogLine(t); }
@@ -5628,6 +5638,17 @@ static bool EndsWith(const char* s, const char* tail)
     return a >= b && memcmp(s + a - b, tail, b) == 0;
 }
 
+static int IpcAfterLoad(void* L, const char* chunkname, int result)
+{
+    // Only MPFever entry files, after successful parsing, on the thread that owns this Lua state.
+    // Registration preserves lua_load's result stack, and the per-state registry makes it idempotent.
+    if (!result && g_ipcLuaReady && chunkname && (EndsWith(chunkname, "mpfever_common.lua") || EndsWith(chunkname, "mpfever_menu.lua"))) {
+        bool ok = MpfLuaRegister(L);
+        Buf info; info.str(ok ? "pipe probe: Lua module ready in state " : "pipe probe: Lua module not registered in state ").hex((uptr)L); LogLine(info);
+    }
+    return result;
+}
+
 extern "C" int LuaLoadDetour(void* L, LuaReader reader, void* data, const char* chunkname, const char* mode)
 {
     if (chunkname && EndsWith(chunkname, "gui/menu/main_menu.tl")) {
@@ -5642,7 +5663,7 @@ extern "C" int LuaLoadDetour(void* L, LuaReader reader, void* data, const char* 
         if (_InterlockedIncrement(&g_pauseInjected) == 1) { Buf b; b.str("pause menu: MPFever card hook added (").str(chunkname).str(")"); LogLine(b); }
         return r;
     }
-    return g_luaLoadOrig(L, reader, data, chunkname, mode);
+    return IpcAfterLoad(L, chunkname, g_luaLoadOrig(L, reader, data, chunkname, mode));
 }
 
 // Lua 5.2.2 (the game's) seeds the hash of its strings with the time and memory addresses (makeseed, lstate.c), for every
@@ -5684,6 +5705,9 @@ extern "C" BOOL WINAPI DllMain(HMODULE inst, DWORD reason, void*)
             g_base = (uptr)GetModuleHandleW(0);
             auto dos = (IMAGE_DOS_HEADER_*)g_base;
             auto fh = (IMAGE_FILE_HEADER_*)((u8*)(g_base + dos->e_lfanew) + 4);
+            char ipc[4] = {};
+            g_ipcProbeRequested = GetEnvironmentVariableA("MPFEVER_IPC_PROBE", ipc, sizeof(ipc)) == 1 && ipc[0] == '1';
+            g_ipcLuaReady = g_ipcProbeRequested && MpfLuaResolve(g_base, fh->TimeDateStamp);
             SelectBuild(fh->TimeDateStamp);
             LimitThreads(); SetupSimPools(); PatchScriptPool((uptr)GetModuleHandleW(0));
             PatchMath(g_base);

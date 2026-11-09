@@ -5783,9 +5783,10 @@ end
 -- results of our own actions, written by the game-script bridge after the simulation applied them
 local function pollResults()
 	if not C.ACTIVE then return end
-	local f = C.IO.open(C.DIR .. C.BS .. "results.log", "rb")
+	local f = C.keptOpen(C.DIR .. C.BS .. "results.log", 0)
 	if not f then return end
 	local size = f:seek("end")
+	if size < U.resOff then U.resOff = 0 end
 	if size > U.resOff then
 		f:seek("set", U.resOff)
 		local chunk = f:read(size - U.resOff) or ""
@@ -5814,7 +5815,6 @@ local function pollResults()
 		end
 		if last then U.resOff = U.resOff + last end
 	end
-	f:close()
 end
 
 local M = {}
@@ -5828,17 +5828,23 @@ end
 -- MPFever panel, mounted on the game's mod entry point for the whole game. It gives the UI state a periodic hook
 -- (results of our own actions and entity bindings).
 local function readPending()
+	-- Only the panel's text: result callbacks and entity bindings are still polled every tick.
+	local now = os.clock()
+	if U.pendingReadAt and now >= U.pendingReadAt and now - U.pendingReadAt < 0.1 then return U.pendingText or "" end
+	U.pendingReadAt = now
 	local f = C.IO.open(C.DIR .. C.BS .. "pending_build.txt", "rb")
-	if not f then return "" end
+	if not f then U.pendingText = ""; return "" end
 	local s = f:read("*a") or ""
 	f:close()
+	U.pendingText = s
 	return s
 end
 
 local function pollBindings()
-	local f = C.IO.open(C.DIR .. C.BS .. "bindings.log", "rb")
+	local f = C.keptOpen(C.DIR .. C.BS .. "bindings.log", 0)
 	if not f then return end
 	local size = f:seek("end")
+	if size < U.bindOff then U.bindOff = 0; U.rev = {}; U.byKey = {} end
 	if size > U.bindOff then
 		f:seek("set", U.bindOff)
 		local chunk = f:read(size - U.bindOff) or ""
@@ -5859,7 +5865,6 @@ local function pollBindings()
 		end
 		U.bindOff = U.bindOff + consumed
 	end
-	f:close()
 end
 
 -- ---------------------------------------------------------------- resynchronisation by the host's savegame
@@ -6243,6 +6248,7 @@ function N.test(p)
 end
 
 local function tick(pendingState)
+	if C.pipeProbe then C.pipeProbe.tick(log, "ui") end
 	-- which company the interface acts as (logged when it changes, and how often it read another one in between)
 	pcall(function()
 		local p = api.engine.util.getPlayer()

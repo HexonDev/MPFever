@@ -4,6 +4,7 @@
         "mpfever.gs.lua",
         "mpfever_bridge.script.lua",
         "mpfever_common.lua",
+        "mpfever_ipc_probe.lua",
         "mpfever_entry.res.lua",
         "mpfever_bar.res.lua",
         "mpfever_ui.res.lua",

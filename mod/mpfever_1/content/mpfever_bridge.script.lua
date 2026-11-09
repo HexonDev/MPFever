@@ -2443,6 +2443,7 @@ end
 
 local function update(userParams, state, dt)
 	if not C.ACTIVE then return end
+	if C.pipeProbe then C.pipeProbe.tick(log, "simulation") end
 	if SIM.ksoQueue then
 		local okK, errK = pcall(SIM.keepStreetFlush)
 		if not okK then log("companies: street owners: " .. tostring(errK)) end
@@ -2490,7 +2491,8 @@ local function update(userParams, state, dt)
 	-- (and how big the state the engine walks at every state:get() is, by its largest parts)
 	if SIM.evTick % 3000 == 0 then
 		local sizes = {}
-		pcall(function()
+		-- This recursive diagnostic can walk a large state; ordinary sessions keep the cheap event count only.
+		if os.getenv("MPFEVER_STATEPROFILE") == "1" then pcall(function()
 			local function count(t, seen)
 				if seen[t] then return 0 end
 				seen[t] = true
@@ -2508,7 +2510,7 @@ local function update(userParams, state, dt)
 			for i = #sizes, 5, -1 do sizes[i] = nil end
 			for i, s in ipairs(sizes) do sizes[i] = s.k .. " " .. s.n end
 			table.insert(sizes, 1, total .. " entries")
-		end)
+		end) else sizes[1] = "not profiled (MPFEVER_STATEPROFILE=1)" end
 		log(string.format("events received: %.1f per update; state: %s", (SIM.evN or 0) / 3000, table.concat(sizes, ", ")))
 		SIM.evN = 0
 	end

@@ -1,6 +1,21 @@
 MPFever - Changelog
 ===================
 
+0.7.13-beta.1 - 2026-11-09: .NET 10 packages, Lua polling optimizations and an opt-in named-pipe probe
+  - CHANGE: the player and dedicated-server launcher run on .NET 10, with the Windows x64 runtime included in each archive.
+    No separate .NET installation is needed. The standalone server-list service remains on .NET Framework 4.8.
+  - PERFORMANCE: result and binding logs keep their read handles open; pending-display reads are throttled; unchanged AI
+    configuration is parsed once; the recursive state-size diagnostic runs only with MPFEVER_STATEPROFILE=1.
+    Deterministic hashes, command ordering and lockstep barriers retain their existing behavior. No FPS, latency or desync
+    improvement is promised from the operation-count tests alone.
+  - DEVELOPMENT: manual two-game tests use independent launchers and normal Host/Join menus, with separate player names.
+  - EXPERIMENTAL: MPFEVER_IPC_PROBE=1 enables a nonblocking Lua/native/named-pipe/C# ping-pong path. Verified in both local
+    games' main-menu Lua states on the installed GOG build. Ordinary multiplayer still uses file IPC. The probe supports
+    one verified game executable, has a 30-second idle timeout and uses process-lifetime native cleanup; it is off by default.
+  - BUILD: CI installs .NET SDK 10, tests the published launcher and native pipe helper, and packages the complete publish
+    directory. The timer self-test still checks API success and the disable switch; scheduler-dependent Sleep timing is
+    reported as a diagnostic, since Windows does not guarantee that an eligible thread runs within 10 ms.
+
 0.7.12 - 2026-11-08: mods that need another mod no longer taken for it (false "not the same version"), a crash on a mod's station name fixed, the other players' reports come in
   - FIX (crash, #162, rasma's game 2026-11-08 20:03): a game script mod of the host named its new station ("Avenue de la
     Scierie") by the host's id; on rasma's game that id was a cargo item, which has no name, and the game stopped

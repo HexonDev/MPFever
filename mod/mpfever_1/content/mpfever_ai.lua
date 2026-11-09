@@ -6027,12 +6027,18 @@ function M.tick(E, st)
 	if not (G.connected and G.session and G.session.started) or G.session.resync or not G.myCo or G.coNone then return end
 	-- (nothing while the session is paused: its actions would wait for their turns)
 	if G.session.pauseAt ~= nil then return end
-	local list = M.listOf(G.coAi)
-	if #list == 0 and os.getenv("MPFEVER_AI") == "1" then list = { { n = 1, color = 7 } } end
-	if #list == 0 then return end
 	-- (the module's own clock, for all its companies)
 	G.AIT = G.AIT or {}
 	local T = G.AIT
+	-- The lobby's configuration rarely changes; do not parse it again before every scheduling check.
+	local text, forced = tostring(G.coAi or ""), os.getenv("MPFEVER_AI") == "1"
+	if not T.configList or T.configText ~= text or T.configForced ~= forced then
+		local list = M.listOf(text)
+		if #list == 0 and forced then list = { { n = 1, color = 7 } } end
+		T.configText, T.configForced, T.configList = text, forced, list
+	end
+	local list = T.configList
+	if #list == 0 then return end
 	-- (dev: the companies act only while ai_enable.txt stands in the module's folder)
 	local dev = os.getenv("MPFEVER_AIDEV")
 	if dev and G.frames % 120 == 0 then

@@ -578,6 +578,7 @@ namespace MPFever
         volatile bool stop;
         Thread poll;
         Process proc;
+        PipeProbe pipeProbe;
         /// <summary>(0.7.5) The game's exit code once it closed (null: unknown), and whether another Transport Fever 3 ran on
         /// this PC while it did (two games of one Steam account write one log, stdout.txt: see Reporter.CrashedSince).</summary>
         public int? ExitCode { get; private set; }
@@ -830,12 +831,22 @@ namespace MPFever
                     if (eq > 0) psi.EnvironmentVariables[kv.Substring(0, eq).Trim()] = kv.Substring(eq + 1);
                 }
             if (Reporter.OtherGamesRunning(-1) > 0) OtherGameSeen = true;
-            proc = Process.Start(psi);
+            // Each game owns its endpoint, including two independently controlled local test games.
+            psi.EnvironmentVariables.Remove("MPFEVER_PIPE");
+            if (psi.EnvironmentVariables["MPFEVER_IPC_PROBE"] == "1")
+            {
+                pipeProbe = new PipeProbe(text => Log.W("[" + Name + "] " + text));
+                psi.EnvironmentVariables["MPFEVER_PIPE"] = pipeProbe.Name;
+                Log.W("[" + Name + "] pipe probe listening: " + pipeProbe.Name);
+            }
+            try { proc = Process.Start(psi); }
+            catch { pipeProbe?.Dispose(); pipeProbe = null; throw; }
             proc.EnableRaisingEvents = true;
             proc.Exited += (s, e) =>
             {
                 try { ExitCode = proc.ExitCode; } catch { ExitCode = null; }
                 if (Reporter.OtherGamesRunning(proc.Id) > 0) OtherGameSeen = true;
+                pipeProbe?.Dispose();
                 Exited?.Invoke();
             };
             // experiment (MPFEVER_AFFINITY=mask): pin the game to some CPU cores
@@ -925,7 +936,7 @@ namespace MPFever
             public void Dispose() { fs?.Dispose(); fs = null; }
         }
 
-        public void Dispose() { stop = true; }
+        public void Dispose() { stop = true; pipeProbe?.Dispose(); }
     }
 
     /// <summary>The session's messages between the host and one player, numbered at both ends, so that a player whose

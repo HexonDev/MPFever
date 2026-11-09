@@ -7,6 +7,9 @@ FlushInstructionCache
 GetCurrentProcess
 CreateThread
 CloseHandle
+CreateEventA
+SetEvent
+WaitForSingleObject
 GetEnvironmentVariableA
 CreateFileA
 WriteFile
@@ -17,6 +20,7 @@ Sleep
 VirtualQuery
 AddVectoredExceptionHandler
 ReadFile
+PeekNamedPipe
 GetFileSize
 GetTickCount
 HeapAlloc

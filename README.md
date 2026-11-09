@@ -1,8 +1,13 @@
 # MPFever – Multiplayer for Transport Fever 3
 
+This fork's **0.7.13-beta.1** is a Windows x64 preview with a bundled .NET 10 runtime, Lua polling optimizations,
+independent local testing and an opt-in named-pipe ping/pong experiment. Download it from
+[HexonDev/MPFever releases](https://github.com/HexonDev/MPFever/releases).
+Ordinary multiplayer still uses file IPC. The pipe probe is disabled by default; see [PIPE-PROBE](docs/PIPE-PROBE.md).
+
 **Play Transport Fever 3 with your friends, in the same world, over the internet or a local network.**
 
-[![Latest release](https://img.shields.io/github/v/release/dkdknight/MPFever?label=download)](https://github.com/dkdknight/MPFever/releases/latest)
+[![Latest release](https://img.shields.io/github/v/release/HexonDev/MPFever?include_prereleases&label=download)](https://github.com/HexonDev/MPFever/releases)
 [![Nexus Mods](https://img.shields.io/badge/Nexus-MPFever-orange)](https://www.nexusmods.com/transportfever3/mods/4)
 [![Discord](https://img.shields.io/badge/Discord-join-5865F2?logo=discord&logoColor=white)](https://discord.gg/DfMxFUQZCR)
 [![Discussions](https://img.shields.io/badge/feedback-Discussions-8957e5?logo=github)](https://github.com/dkdknight/MPFever/discussions)
@@ -38,7 +43,7 @@ Each player plays in their own copy of the game. MPFever replays every player's 
 
 | Requirement | Why |
 |---|---|
-| **Transport Fever 3 on Steam, Windows** | MPFever is tested on the Steam version. A GOG copy works too, experimentally (joining through Steam isn't possible there: join the host's address). |
+| **Transport Fever 3 on Steam, 64-bit Windows 10/11** | The launcher includes its .NET 10 runtime. A GOG copy works too, experimentally (joining through Steam isn't possible there: join the host's address). |
 | **The same game version on every PC** | Two different game builds don't simulate the world the same way. Supported: **40425** (current), **40423** and **40420**. Make sure Steam has updated the game on every PC. |
 | **The same DLCs on every PC** | The Deluxe edition's upgrade pack and the pre-order pack put their animals, people and vehicles in the world of the PC that owns them only, and the games may drift apart. The lobby warns when the players' DLCs differ and says what to do: the host can switch them off in the savegame's mods, or the players can get them. |
 | **The same MPFever version on every PC** | MPFever updates itself; every player just needs a recent version (0.3.15 or later). |
@@ -46,7 +51,7 @@ Each player plays in their own copy of the game. MPFever replays every player's 
 
 ## Install and play
 
-1. Download **`MPFever-<version>.zip`** from the [releases](https://github.com/dkdknight/MPFever/releases/latest).
+1. Download **`MPFever-<version>.zip`** from this fork's [releases](https://github.com/HexonDev/MPFever/releases).
 2. **Extract the whole folder** anywhere, for example on your desktop.
    Always start `MPFever.exe` **from that folder**. Don't move the `.exe` out of it, use a shortcut instead: MPFever needs the files next to it to update itself and to stay in sync.
 3. Start **`MPFever.exe`**. It finds the game (or asks you for its `TransportFever3.exe`), installs the mod and starts Transport Fever 3.
@@ -188,7 +193,7 @@ The savegames are in `Steam\userdata\<number>\3493540\local\save\`.
 
 | Part | Folder | Role |
 |---|---|---|
-| Launcher | `launcher/` (C#, .NET Framework 4.8) | Hosts or joins over TCP, starts the game, installs the mod and the native module. It relays actions, compares the games' state and runs the resyncs. With `--server`, it is the dedicated server. |
+| Launcher | `launcher/` (C#, .NET 10, Windows x64) | Hosts or joins over TCP, starts the game, installs the mod and the native module. It relays actions, compares the games' state and runs the resyncs. With `--server`, it is the dedicated server. |
 | Game mod | `mod/mpfever_1/` (Lua) | Captures player actions and replays them in every game at the same game time (barrier lockstep). It computes the state checksums and manages the companies. It also draws the multiplayer page and the in-game windows. It does nothing unless the game was started by the launcher. |
 | Native module | `native/` (C++, no CRT) | `winhttp.dll` in the game folder, a pass-through proxy. In a session, it holds construction commands until the shared step, copies terrain edits, separates each player's company, and fixes the game's sources of randomness and its pacing. |
 | Tests | `tests/` (Python + lupa) | Language files and a simulated lockstep. |
@@ -199,13 +204,13 @@ What we learned about the engine, the causes of desyncs and what each mode must 
 
 ### Building
 
-You need Windows 10/11, Visual Studio 2022 or later, with *Desktop development with C++* and *.NET desktop development* (.NET Framework 4.8), and Python 3 with lupa (`pip install lupa`). Then run:
+You need 64-bit Windows 10/11, .NET SDK 10, Visual Studio's *Desktop development with C++* tools, the .NET Framework 4.8 targeting pack for the separate server-list service, and Python 3 with lupa (`pip install lupa==2.8`). Then run:
 
 ```bat
 build.bat
 ```
 
-It builds `native\out\winhttp.dll` and `launcher\bin\Release\MPFever.exe`, runs the tests (below), and makes the archives in `release\` only when they all pass. A compiler warning stops the build too.
+It builds `native\out\winhttp.dll`, publishes the self-contained launcher into `launcher\bin\ReleasePublish`, runs the tests (including the native pipe helper), and makes the archives and SHA-256 file in `release\` only when they all pass. A compiler warning stops the build too.
 
 The published archives are built on GitHub by the [Release build](.github/workflows/release.yml) workflow, started by hand: the same `build.bat`, from the repository's code, then the signature of `MPFever.exe` and `winhttp.dll` (see [Code signing policy](#code-signing-policy)). It publishes nothing: its archives are tested, then attached to a release by hand.
 

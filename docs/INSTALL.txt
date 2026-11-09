@@ -1,9 +1,10 @@
-MPFever 0.6.12 - Installation and first game
+MPFever 0.7.13-beta.1 - Installation and first game
 ========================================================
 
 REQUIREMENTS (every player)
 ---------------------------
-- Windows 10 or 11 with .NET Framework 4.8 (already included in Windows 10/11).
+- Windows 10 or 11, 64-bit. The player/server archives include the .NET 10 runtime;
+  no separate .NET installation is needed. Keep all runtime files beside MPFever.exe.
 - Transport Fever 3 on Steam, up to date. Every player must have the same game version
   and the same mods. MPFever is not made for other mods yet: mods that change the game by
   themselves (rename lines, assign terminals...) break the synchronisation.
@@ -22,6 +23,8 @@ REQUIREMENTS (every player)
 2. Extract the archive anywhere, for example to your Desktop. Keep the folder structure:
        MPFever\
          MPFever.exe
+         MPFever.dll, MPFever.deps.json, MPFever.runtimeconfig.json
+         (.NET runtime DLLs and language folders)
          winhttp.dll
          mod\mpfever_1\...
          (documentation files)
@@ -100,7 +103,10 @@ During the game:
   game also closes MPFever.
 
 Developer mode (MPFever.exe --dev) keeps the old window with the Host / Join buttons
-and the local test.
+and the local test. "Local test (2 games)" opens two independent launchers/games:
+host from one game's Multiplayer page, join 127.0.0.1:28090 from the other, then
+start from the host's lobby. It does not connect them automatically. Automated
+--autotest scenarios keep their preconnected setup.
 
 A world can also run on a dedicated server, a PC of its own that nobody plays on
 : download the separate archive MPFever-<version>-server.zip (its folder is called

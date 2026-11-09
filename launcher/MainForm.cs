@@ -50,11 +50,11 @@ namespace MPFever
                 Console.WriteLine(F("({0:0.00} s)", "({0:0.00} s)", (DateTime.UtcNow - t0).TotalSeconds));
                 return 0;
             }
-            if (args.Length > 0 && args[0] == "--selftest")
+            if (args.Length > 0 && (args[0] == "--selftest" || args[0] == "--pipe-selftest"))
             {
                 Log.Init(Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "logs"));
                 Log.Line += l => Console.WriteLine(l);
-                return SelfTest.Run();
+                return args[0] == "--pipe-selftest" ? (SelfTest.RunPipeProbe().GetAwaiter().GetResult() ? 0 : 1) : SelfTest.Run();
             }
             Theme.InitDpi();
             Application.EnableVisualStyles();
@@ -81,9 +81,7 @@ namespace MPFever
                 return 0;
             }
             bool auto = args.Length > 0 && args[0] == "--autotest";
-            MainForm.Dev = auto || args.Contains("--dev");
-            // default: the game starts at once and the session is set up from its main menu (MPFever window)
-            MainForm.MenuModeDefault = !MainForm.Dev;
+            MainForm.ConfigureLaunchMode(args, auto);
             if (auto) GameLink.AutoSave = args.Length > 1 ? args[1] : "test multi";
             // started by the game from a Steam invitation: join that host at once
             int j = Array.IndexOf(args, "--join");
@@ -117,10 +115,11 @@ namespace MPFever
 
     sealed partial class MainForm : Form
     {
-        public const string Version = "0.7.12";
+        public const string Version = "0.7.13-beta.1";
         /// <summary>Developer mode (MPFever.exe --dev): local two-game test and determinism test buttons.</summary>
         public static bool Dev;
         public static bool MenuModeDefault;
+        internal static string LocalPlayerName;
         public static string JoinAtStart;
         /// <summary>Started by the previous MPFever.exe after an update (--updated).</summary>
         public static bool JustUpdated;
@@ -1210,7 +1209,7 @@ namespace MPFever
             launchBtn.Visible = player && waitingLaunch && !gameClosed;
             launchBtn.Enabled = !installing;
             autoLaunchBox.Visible = player && MenuModeDefault && (waitingLaunch || installing) && !gameClosed;
-            startBtn.Visible = !ServerMode && !gameClosed && !waitingLaunch && !installing;   // (a server starts its world by itself)
+            startBtn.Visible = !ServerMode && !gameClosed && !waitingLaunch && !installing && !(Dev && menuMode && !autotest);
             againBtn.Visible = !ServerMode && gameClosed;
             // (0.7.4: no game yet, the speed controls (off until a session starts) leave the room to the launch button and its box;
             // with them the bar was too long and x2 and x4 went out of it)
@@ -1288,6 +1287,14 @@ namespace MPFever
 
         void InitInstallLocked()
         {
+            try { if (LoadSettings().TryGetValue("savedirs", out var sd)) GameInstall.AddGameSaveDirs(sd.Split('|')); } catch { }
+            if (LocalPlayerName != null)
+            {
+                // The first instance installed these before either game started. Reinstalling now could remove files
+                // while that game is loading them, or try to replace its loaded native DLL.
+                Log.Dim("Local test: using the mod and native module installed by the first launcher.");
+                return;
+            }
             if (GameInstall.NotSteamCopy(gameDir))
                 Log.Warn(T("Copie du jeu hors Steam (GOG ?) : prise en charge expérimentale. Rejoindre par Steam n'y est pas possible, utilisez l'adresse de l'hôte.",
                            "A copy of the game not installed by Steam (GOG?): experimental support. Joining through Steam is not possible there, use the host's address."));
@@ -1301,7 +1308,6 @@ namespace MPFever
             // (0.7.9, #136) another copy of the mod in the game's folders, which the game would take (see ModCopies)
             if (!autotest) FindStaleMods();
             if (!autotest && !ServerMode) WarnIncompatibleMods();
-            try { if (LoadSettings().TryGetValue("savedirs", out var sd)) GameInstall.AddGameSaveDirs(sd.Split('|')); } catch { }
         }
 
         /// <summary>Back on the window's thread: the warnings, then the server's window, the game started (or waiting for the
@@ -1489,7 +1495,34 @@ namespace MPFever
 
         /// <summary>The player name kept from the last host or join in the MPFever window (name= in mpfever_settings.txt),
         /// else the Windows user name. The game and the launcher window both start with it.</summary>
-        static string SavedName() => LoadSettings().TryGetValue("name", out var n) && n != "" ? n : Environment.UserName;
+        static string SavedName() => LocalPlayerName ?? (LoadSettings().TryGetValue("name", out var n) && n != "" ? n : Environment.UserName);
+
+        internal static void ConfigureLaunchMode(string[] args, bool auto)
+        {
+            int local = Array.IndexOf(args, "--local-player");
+            LocalPlayerName = null;
+            if (local >= 0)
+                LocalPlayerName = local + 1 < args.Length && !args[local + 1].StartsWith("--", StringComparison.Ordinal)
+                    && !string.IsNullOrWhiteSpace(args[local + 1]) ? args[local + 1] : Environment.UserName + "_2";
+            Dev = auto || args.Contains("--dev") || local >= 0;
+            // The second manual test player uses the ordinary menu/lobby flow, with developer updates disabled.
+            MenuModeDefault = !Dev || (!auto && local >= 0);
+        }
+
+        internal static ProcessStartInfo LocalMenuPlayerStart(string exe, string name)
+        {
+            var start = new ProcessStartInfo(exe) { UseShellExecute = false, WorkingDirectory = Path.GetDirectoryName(exe) };
+            start.ArgumentList.Add("--local-player");
+            start.ArgumentList.Add(name);
+            start.ArgumentList.Add("--launch");
+            return start;
+        }
+
+        internal static void RememberPlayerName(string name)
+        {
+            if (LocalPlayerName == null) SaveSetting("name", name);
+            else LocalPlayerName = name;
+        }
 
         /// <summary>MPFever.exe started normally: the game starts at once; hosting or joining is chosen in the MPFever
         /// window of its main menu.</summary>
@@ -1497,6 +1530,7 @@ namespace MPFever
         {
             menuMode = true;
             running = true;
+            ShowLaunchControls();
             hostBtn.Enabled = joinBtn.Enabled = localBtn.Enabled = false;
             menuGame = new GameLink(SavedName(), "menu");
             games.Add(menuGame);
@@ -2132,7 +2166,7 @@ namespace MPFever
             // requests do not send one)
             if (cmd == "host" || cmd == "join")
             {
-                SaveSetting("name", name);
+                RememberPlayerName(name);
                 try { BeginInvoke((Action)(() => nameBox.Text = name)); } catch { }
             }
             if (cmd == "host")
@@ -3745,6 +3779,29 @@ namespace MPFever
 
         void StartLocalTest()
         {
+            if (!autotest)
+            {
+                // Independent launchers are needed: each menu has its own lobby, relay/client and session lifecycle.
+                string secondName = PlayerName() + "_2";
+                SaveSetting("name", PlayerName());
+                StartMenuMode();
+                var second = new System.Windows.Forms.Timer { Interval = 20000 };
+                second.Tick += (s, e) =>
+                {
+                    second.Stop(); second.Dispose();
+                    if (IsDisposed || menuGame == null || !menuGame.GameRunning) return;
+                    try
+                    {
+                        using (var process = Process.Start(LocalMenuPlayerStart(Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "MPFever.exe"), secondName)))
+                            Log.W("Local test: second independent launcher started (pid " + process.Id + ").");
+                    }
+                    catch (Exception ex) { Log.Err("Local test: the second launcher could not start: " + ex.Message); }
+                };
+                second.Start();
+                Log.W("Local test: two independent games; the second opens in 20 s. Host from one game's Multiplayer menu, then join from the other (127.0.0.1). Start from the host's lobby.");
+                return;
+            }
+            // Automated scenarios keep their original preconnected host/client setup.
             StartHost("Host", true);
             Log.W(T("Lancement du second jeu dans 20 s...", "Starting the second game in 20 s..."));
             var t = new System.Windows.Forms.Timer { Interval = autotest ? 8000 : 20000 };

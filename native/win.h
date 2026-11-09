@@ -57,6 +57,9 @@ __declspec(dllimport) BOOL WINAPI TlsSetValue(DWORD index, void* value);
 __declspec(dllimport) void WINAPI RaiseException(DWORD code, DWORD flags, DWORD nargs, const u64* args);
 __declspec(dllimport) HANDLE WINAPI CreateThread(void*, u64, LPTHREAD_START_ROUTINE, void*, DWORD, DWORD*);
 __declspec(dllimport) BOOL WINAPI CloseHandle(HANDLE);
+__declspec(dllimport) HANDLE WINAPI CreateEventA(void*, BOOL, BOOL, const char*);
+__declspec(dllimport) BOOL WINAPI SetEvent(HANDLE);
+__declspec(dllimport) DWORD WINAPI WaitForSingleObject(HANDLE, DWORD);
 __declspec(dllimport) DWORD WINAPI GetEnvironmentVariableA(const char*, char*, DWORD);
 __declspec(dllimport) HANDLE WINAPI CreateFileA(const char*, DWORD, DWORD, void*, DWORD, DWORD, HANDLE);
 __declspec(dllimport) BOOL WINAPI WriteFile(HANDLE, const void*, DWORD, DWORD*, void*);
@@ -68,6 +71,7 @@ struct MEMORY_BASIC_INFORMATION { void* BaseAddress; void* AllocationBase; DWORD
 __declspec(dllimport) u64 WINAPI VirtualQuery(const void*, MEMORY_BASIC_INFORMATION*, u64);
 __declspec(dllimport) void* WINAPI AddVectoredExceptionHandler(u32, long (WINAPI*)(void*));
 __declspec(dllimport) BOOL WINAPI ReadFile(HANDLE, void*, DWORD, DWORD*, void*);
+__declspec(dllimport) BOOL WINAPI PeekNamedPipe(HANDLE, void*, DWORD, DWORD*, DWORD*, DWORD*);
 __declspec(dllimport) DWORD WINAPI GetFileSize(HANDLE, DWORD*);
 __declspec(dllimport) DWORD WINAPI GetTickCount();
 __declspec(dllimport) void* WINAPI HeapAlloc(HANDLE, DWORD, u64);
