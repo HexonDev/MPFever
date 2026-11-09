@@ -7,7 +7,7 @@
     <LangVersion>latest</LangVersion>
     <AssemblyName>MPFever</AssemblyName>
     <RootNamespace>MPFever</RootNamespace>
-    <Version>0.7.13-beta.2</Version>
+    <Version>0.7.13-beta.3</Version>
     <Product>MPFever</Product>
     <Nullable>disable</Nullable>
     <!-- WebRequest/ServicePointManager (updates, reports, UPnP, server list) are kept; HttpClient is a change of its own -->

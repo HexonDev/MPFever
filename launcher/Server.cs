@@ -672,6 +672,7 @@ namespace MPFever
         /// world again, or stopped). If the update fails, the same version starts again.</summary>
         void ServerSelfUpdate(UpdateInfo u)
         {
+            if (!Updater.Allowed(u)) return;
             if (serverStopping) return;
             serverStopping = true;
             pendingUpdate = null;

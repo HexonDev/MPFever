@@ -115,7 +115,7 @@ namespace MPFever
 
     sealed partial class MainForm : Form
     {
-        public const string Version = "0.7.13-beta.2";
+        public const string Version = "0.7.13-beta.3";
         /// <summary>Developer mode (MPFever.exe --dev): local two-game test and determinism test buttons.</summary>
         public static bool Dev;
         public static bool MenuModeDefault;
@@ -565,7 +565,14 @@ namespace MPFever
             {
                 bool guest = relay == null && clients.Count > 0 && Options.HostSession != null;
                 string prevDir = gameDir;
+                bool prevBeta = Updater.IncludePrereleases, prevAutoUpdate = Updater.Enabled;
                 using (var d = new OptionsDialog(guest)) d.ShowDialog(this);
+                if (prevBeta != Updater.IncludePrereleases || prevAutoUpdate != Updater.Enabled)
+                {
+                    pendingUpdate = null;
+                    StartUpdateWatch();
+                    if (Updater.Enabled) updateWatch?.Change(TimeSpan.Zero, TimeSpan.FromMinutes(Updater.RecheckMinutes));
+                }
                 foreach (var g in games.ToList()) g.WriteSettings();
                 var newDir = GameInstall.FindGameDir();
                 if (!string.Equals(prevDir, newDir, StringComparison.OrdinalIgnoreCase))
@@ -910,6 +917,7 @@ namespace MPFever
                 answered = true;
                 timeout.Dispose();
                 status.Text = T("Prêt.", "Ready.");
+                if (!Updater.Allowed(u)) u = null;
                 if (error != null) Log.Dim(F("Recherche de mises à jour impossible : {0}", "Could not check for updates: {0}", error));
                 else if (u == null) Log.Dim(T("MPFever est à jour.", "MPFever is up to date."));
                 else
@@ -961,10 +969,11 @@ namespace MPFever
             {
                 try
                 {
+                    if (!Updater.Enabled) return;
                     var u = Updater.Check();
-                    if (u == null) return;
+                    if (!Updater.Allowed(u)) return;
                     var known = pendingUpdate;
-                    if (known != null && Updater.CompareVersions(Updater.ParseVersion(u.Version), Updater.ParseVersion(known.Version)) <= 0) return;
+                    if (known != null && Updater.CompareReleaseVersions(u.Version, known.Version) <= 0) return;
                     pendingUpdate = u;
                     if (ServerMode && !serverStarted)
                     {
@@ -1003,7 +1012,7 @@ namespace MPFever
             }
             var u = pendingUpdate;
             bool installed = false;
-            if (u != null && !ServerMode && Updater.Enabled)
+            if (Updater.Allowed(u) && !ServerMode && Updater.Enabled)
             {
                 pendingUpdate = null;
                 try

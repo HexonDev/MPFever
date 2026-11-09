@@ -1,6 +1,16 @@
 MPFever - Changelog
 ===================
 
+0.7.13-beta.3 - 2026-11-09: opt-in beta update channel in Settings
+  - CHANGE: Settings > Your settings > Check for beta releases includes prereleases in update checks. Off by default;
+    the personal choice is saved as prereleaseupdates=1/0 in mpfever_settings.txt and retained across updates.
+  - FIX: release comparisons retain prerelease suffixes: beta.10 is newer than beta.2, stable supersedes its betas,
+    and metadata does not change precedence. Server-list service archives are excluded from launcher updates.
+  - CHANGE: changing the update channel clears a pending update and requests a fresh check when automatic updates are
+    enabled. Disabling beta updates also prevents a cached beta from being installed, including on dedicated servers.
+  - TEST: real Settings checkboxes are toggled and reopened to verify saving; release fixtures cover channel filtering,
+    drafts, numbered betas, stable/beta ordering, server assets, metadata and large numeric prerelease identifiers.
+
 0.7.13-beta.2 - 2026-11-09: normal game launch works without the pipe-probe environment variable
   - FIX: starting the game with MPFEVER_IPC_PROBE unset threw KeyNotFoundException in GameLink.Launch. The optional
     environment key is now read with TryGetValue; absent or 0 keeps the probe disabled, and 1 enables it.

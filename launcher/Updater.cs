@@ -21,6 +21,7 @@ namespace MPFever
     {
         public string Tag, Version, PageUrl, ZipUrl, Sha256;
         public long ZipSize;
+        public bool IsPrerelease;
     }
 
     /// <summary>Automatic update from the GitHub releases of MPFever (github.com/HexonDev/MPFever/releases).
@@ -53,6 +54,9 @@ namespace MPFever
         static string Setting => MainForm.LoadSettings().TryGetValue("autoupdate", out var v) ? v.Trim().ToLowerInvariant() : "1";
         public static bool Enabled => Setting != "0";
         public static bool Ask => Setting == "ask";
+        public const string PrereleaseSetting = "prereleaseupdates";
+        public static bool IncludePrereleases => MainForm.LoadSettings().TryGetValue(PrereleaseSetting, out var v) && v.Trim() == "1";
+        public static bool Allowed(UpdateInfo update) => update != null && (!update.IsPrerelease || IncludePrereleases);
 
         /// <summary>MPFever.exe runs from an unpacked release (mod\mpfever_1 next to it), not from a build folder.</summary>
         public static bool InReleaseFolder => File.Exists(Path.Combine(AppDir, "mod", "mpfever_1", "mod.json"));
@@ -83,20 +87,57 @@ namespace MPFever
         static object Get(Dictionary<string, object> d, string k) => d.TryGetValue(k, out var v) ? v : null;
         static string Str(Dictionary<string, object> d, string k) => Get(d, k) as string ?? "";
 
-        /// <summary>From GitHub's list of releases: the newest published one (no draft, no pre-release) that has an
-        /// MPFever zip, when it is newer than <paramref name="current"/>; else null.</summary>
-        public static UpdateInfo Newest(string json, string current, bool server = false)
+        static string ReleaseVersionText(string text)
         {
-            var cur = ParseVersion(current) ?? new[] { 0 };
+            var m = Regex.Match(text ?? "", @"\d+(?:\.\d+)+(?:-[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?");
+            return m.Success && ParseVersion(m.Value) != null ? m.Value : null;
+        }
+
+        static string[] PrereleaseParts(string text)
+        {
+            var m = Regex.Match(text ?? "", @"\d+(?:\.\d+)+-([0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)");
+            return m.Success ? m.Groups[1].Value.Split('.') : Array.Empty<string>();
+        }
+
+        // SemVer precedence, keeping the existing permissive numeric-core parsing for older tags.
+        public static int CompareReleaseVersions(string a, string b)
+        {
+            int core = CompareVersions(ParseVersion(a) ?? new[] { 0 }, ParseVersion(b) ?? new[] { 0 });
+            if (core != 0) return core;
+            var ap = PrereleaseParts(a);
+            var bp = PrereleaseParts(b);
+            if (ap.Length == 0 || bp.Length == 0) return ap.Length == bp.Length ? 0 : ap.Length == 0 ? 1 : -1;
+            for (int i = 0; i < Math.Min(ap.Length, bp.Length); i++)
+            {
+                bool an = ap[i].All(c => c >= '0' && c <= '9'), bn = bp[i].All(c => c >= '0' && c <= '9');
+                int diff;
+                if (an && bn)
+                {
+                    // Compare numeric identifiers without overflow (beta.10 > beta.2).
+                    string av = ap[i].TrimStart('0'), bv = bp[i].TrimStart('0');
+                    diff = av.Length != bv.Length ? av.Length.CompareTo(bv.Length) : string.CompareOrdinal(av, bv);
+                }
+                else diff = an != bn ? (an ? -1 : 1) : string.CompareOrdinal(ap[i], bp[i]);
+                if (diff != 0) return diff;
+            }
+            return ap.Length.CompareTo(bp.Length);
+        }
+
+        /// <summary>From GitHub's list of releases: the newest published one (never a draft; prereleases are opt-in) that has an
+        /// MPFever zip, when it is newer than <paramref name="current"/>; else null.</summary>
+        public static UpdateInfo Newest(string json, string current, bool server = false, bool includePrereleases = false)
+        {
             if (!(Json.Parse(json) is List<object> releases)) return null;
             UpdateInfo best = null;
-            int[] bestV = null;
+            string bestV = null;
             foreach (var r in releases.OfType<Dictionary<string, object>>())
             {
                 if (Get(r, "draft") is bool draft && draft) continue;
-                if (Get(r, "prerelease") is bool pre && pre) continue;
+                bool prerelease = Get(r, "prerelease") is bool pre && pre;
+                if (prerelease && !includePrereleases) continue;
                 var zips = (Get(r, "assets") as List<object> ?? new List<object>()).OfType<Dictionary<string, object>>().Where(a =>
                     Str(a, "name").StartsWith("MPFever", StringComparison.OrdinalIgnoreCase) && Str(a, "name").EndsWith(".zip", StringComparison.OrdinalIgnoreCase)
+                    && !Str(a, "name").StartsWith("MPFever-ServerList-", StringComparison.OrdinalIgnoreCase)
                     && Str(a, "browser_download_url").StartsWith("https://", StringComparison.OrdinalIgnoreCase)).ToList();
                 // the players' archive, or the dedicated server's (MPFever-<version>-server.zip, the same files plus the
                 // server's) for a server; GitHub lists the server's first ("-" sorts before ".")
@@ -104,13 +145,19 @@ namespace MPFever
                 var zip = (server ? zips.FirstOrDefault(isServer) : null) ?? zips.FirstOrDefault(a => !isServer(a));
                 if (zip == null) continue;
                 // the version of the tag (0.3.10, MPFever0.2.0), else of the title or of the zip's name
-                var v = ParseVersion(Str(r, "tag_name")) ?? ParseVersion(Str(r, "name")) ?? ParseVersion(Str(zip, "name"));
-                if (v == null || (bestV != null && CompareVersions(v, bestV) <= 0)) continue;
+                var assetVersion = Path.GetFileNameWithoutExtension(Str(zip, "name"));
+                if (assetVersion.EndsWith("-server", StringComparison.OrdinalIgnoreCase)) assetVersion = assetVersion.Substring(0, assetVersion.Length - 7);
+                var v = ReleaseVersionText(Str(r, "tag_name")) ?? ReleaseVersionText(Str(r, "name")) ?? ReleaseVersionText(assetVersion);
+                if (v == null) continue;
+                prerelease |= PrereleaseParts(v).Length > 0;
+                if (prerelease && !includePrereleases) continue;
+                if (bestV != null && CompareReleaseVersions(v, bestV) <= 0) continue;
                 var digest = Str(zip, "digest");
                 best = new UpdateInfo
                 {
                     Tag = Str(r, "tag_name"),
-                    Version = string.Join(".", v),
+                    Version = v,
+                    IsPrerelease = prerelease,
                     PageUrl = Str(r, "html_url") != "" ? Str(r, "html_url") : ReleasesPage,
                     ZipUrl = Str(zip, "browser_download_url"),
                     ZipSize = Get(zip, "size") is double size ? (long)size : 0,
@@ -118,7 +165,7 @@ namespace MPFever
                 };
                 bestV = v;
             }
-            return best != null && CompareVersions(bestV, cur) > 0 ? best : null;
+            return best != null && CompareReleaseVersions(bestV, current) > 0 ? best : null;
         }
 
         // ---------------------------------------------------------------- GitHub
@@ -142,13 +189,14 @@ namespace MPFever
             req.AutomaticDecompression = DecompressionMethods.GZip | DecompressionMethods.Deflate;
             using (var resp = req.GetResponse())
             using (var r = new StreamReader(resp.GetResponseStream(), Encoding.UTF8))
-                return Newest(r.ReadToEnd(), MainForm.Version, MainForm.ServerMode);
+                return Newest(r.ReadToEnd(), MainForm.Version, MainForm.ServerMode, IncludePrereleases);
         }
 
         /// <summary>Downloads the update, puts its files into MPFever's folder (see <see cref="Install"/>).
         /// <paramref name="progress"/>: bytes received and expected; <paramref name="installing"/>: download finished.</summary>
         public static void Run(UpdateInfo u, Action<long, long> progress, Action installing)
         {
+            if (!Allowed(u)) throw new InvalidOperationException(T("Les mises à jour bêta sont désactivées.", "Beta updates are disabled."));
             var work = WorkDir;
             if (Directory.Exists(work)) Directory.Delete(work, true);
             Directory.CreateDirectory(work);

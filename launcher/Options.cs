@@ -66,6 +66,9 @@ namespace MPFever
             new Opt { Key = "autoupdate", Launcher = true, DefaultOn = true, OnValue = "1", OffValue = "0",
                 Name = () => T("Mise à jour automatique", "Automatic update"),
                 Help = () => T("Installe une nouvelle version de MPFever à la fermeture du jeu.", "Installs a new MPFever version when the game closes.") },
+            new Opt { Key = Updater.PrereleaseSetting, Launcher = true, DefaultOn = false, OnValue = "1", OffValue = "0",
+                Name = () => T("Rechercher aussi les versions bêta", "Check for beta releases"),
+                Help = () => T("Inclut les versions expérimentales dans les mises à jour. Désactivé : versions stables uniquement.", "Includes experimental releases in update checks. Off: stable releases only.") },
             new Opt { Key = "upnp", Launcher = true, DefaultOn = true, OnValue = "1", OffValue = "0",
                 Name = () => T("Ouverture automatique du port (UPnP)", "Open the port by itself (UPnP)"),
                 Help = () => T("Pour héberger : ouvre le port sur votre box.", "To host: opens the port on your router.") },
@@ -215,7 +218,7 @@ namespace MPFever
             Control Row(Opt o)
             {
                 var p = new Panel { Width = w, Height = S(48) };
-                var cb = new CheckBox { Text = o.Name(), Checked = Options.IsOn(o), AutoSize = false, Width = w, Height = S(24), Font = Theme.Ui(9.75f), ForeColor = Theme.Text, Location = new Point(0, 0) };
+                var cb = new CheckBox { Name = o.Key, Text = o.Name(), Checked = Options.IsOn(o), AutoSize = false, Width = w, Height = S(24), Font = Theme.Ui(9.75f), ForeColor = Theme.Text, Location = new Point(0, 0) };
                 var help = new Label { Text = o.Help(), AutoSize = false, Width = w - S(20), Height = S(22), Location = new Point(S(20), S(24)), Font = Theme.Ui(8.5f), ForeColor = Theme.Muted };
                 if (o.Session && guest)
                 {

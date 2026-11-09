@@ -1,4 +1,4 @@
-MPFever 0.7.13-beta.2 - Installation and first game
+MPFever 0.7.13-beta.3 - Installation and first game
 ========================================================
 
 REQUIREMENTS (every player)

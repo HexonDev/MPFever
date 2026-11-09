@@ -5851,6 +5851,45 @@
       "zh-CN": "刚建好就拆除的建筑在所有游戏中费用相同。",
       "zh-TW": "剛建好就拆除的建築在所有遊戲中費用相同。"
     },
+    "Check for beta releases": {
+      "de": "Auch nach Betaversionen suchen",
+      "es": "Buscar también versiones beta",
+      "it": "Cerca anche versioni beta",
+      "nl": "Ook naar bètaversies zoeken",
+      "pl": "Szukaj także wersji beta",
+      "pt-BR": "Buscar também versões beta",
+      "ru": "Проверять также бета-версии",
+      "ja": "ベータ版も確認する",
+      "ko": "베타 버전도 확인",
+      "zh-CN": "同时检查测试版",
+      "zh-TW": "同時檢查測試版"
+    },
+    "Includes experimental releases in update checks. Off: stable releases only.": {
+      "de": "Bezieht Testversionen in Updates ein. Aus: nur stabile Versionen.",
+      "es": "Incluye versiones experimentales. Desactivado: solo versiones estables.",
+      "it": "Include versioni sperimentali. Disattivato: solo versioni stabili.",
+      "nl": "Neemt experimentele versies mee. Uit: alleen stabiele versies.",
+      "pl": "Uwzględnia wersje eksperymentalne. Wyłączone: tylko wersje stabilne.",
+      "pt-BR": "Inclui versões experimentais. Desativado: apenas versões estáveis.",
+      "ru": "Включает экспериментальные версии. Выключено: только стабильные версии.",
+      "ja": "実験的なバージョンも更新対象にします。オフの場合は安定版のみ。",
+      "ko": "실험 버전도 업데이트에 포함합니다. 끄면 안정 버전만 확인합니다.",
+      "zh-CN": "更新检查包含实验版本。关闭时仅检查稳定版本。",
+      "zh-TW": "更新檢查包含實驗版本。關閉時僅檢查穩定版本。"
+    },
+    "Beta updates are disabled.": {
+      "de": "Beta-Updates sind deaktiviert.",
+      "es": "Las actualizaciones beta están desactivadas.",
+      "it": "Gli aggiornamenti beta sono disattivati.",
+      "nl": "Bèta-updates zijn uitgeschakeld.",
+      "pl": "Aktualizacje beta są wyłączone.",
+      "pt-BR": "As atualizações beta estão desativadas.",
+      "ru": "Бета-обновления отключены.",
+      "ja": "ベータ版への更新は無効です。",
+      "ko": "베타 업데이트가 비활성화되어 있습니다.",
+      "zh-CN": "测试版更新已禁用。",
+      "zh-TW": "測試版更新已停用。"
+    },
     "Automatic update": {
       "de": "Automatische Aktualisierung",
       "es": "Actualización automática",

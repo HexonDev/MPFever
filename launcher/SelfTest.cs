@@ -707,7 +707,8 @@ namespace MPFever
                 "update: newest published release with a zip, the players' archive (" + (u == null ? "none" : u.Version + " " + u.ZipUrl) + ")");
             var us = Updater.Newest(json, "0.3.14-experimental", true);
             Check(us != null && us.ZipUrl.EndsWith("-server.zip"), "update: a dedicated server takes the server's archive");
-            Check(Updater.Newest(json, "0.3.15-experimental") == null, "update: nothing newer than 0.3.15");
+            Check(Updater.Newest(json, "0.3.15-experimental")?.Version == "0.3.15", "update: a stable release supersedes its experimental build");
+            Check(Updater.Newest(json, "0.3.15") == null, "update: nothing newer than the current stable release");
             Check(Updater.CompareVersions(Updater.ParseVersion("0.3.10"), Updater.ParseVersion("0.3.9")) > 0, "update: 0.3.10 is newer than 0.3.9");
             Check(Updater.CompareVersions(Updater.ParseVersion("0.4.0"), Updater.ParseVersion("0.3.25")) > 0, "update: 0.4.0 is newer than 0.3.25");
             // (from 0.3.22 the archives lose "-experimental": the older launchers must still take them)
@@ -718,6 +719,57 @@ namespace MPFever
             var us2 = Updater.Newest(json2, "0.3.21-experimental", true);
             Check(us2 != null && us2.ZipUrl.EndsWith("/MPFever-0.3.22-server.zip"), "update: a 0.3.21-experimental server takes MPFever-0.3.22-server.zip");
             Check(Updater.Newest(json2, "0.3.22") == null, "update: nothing newer than 0.3.22");
+
+            var betaJson = "[" + string.Join(",",
+                Rel("v0.7.13-beta.2", false, true, Asset("MPFever-0.7.13-beta.2.zip")),
+                Rel("v0.7.13-beta.10", false, true, Asset("MPFever-0.7.13-beta.10-server.zip"), Asset("MPFever-0.7.13-beta.10.zip")),
+                Rel("v0.7.13-beta.99", true, true, Asset("MPFever-0.7.13-beta.99.zip")),
+                Rel("v0.7.12", false, false, Asset("MPFever-0.7.12.zip")),
+                Rel("v9.0.0", false, false, Asset("MPFever-ServerList-9.0.0.zip"))) + "]";
+            Check(Updater.Newest(betaJson, "0.7.12") == null, "update: betas excluded by default, drafts and server-list-only releases ignored");
+            var beta = Updater.Newest(betaJson, "0.7.13-beta.2", includePrereleases: true);
+            Check(beta?.Version == "0.7.13-beta.10" && beta.IsPrerelease && beta.ZipUrl.EndsWith("beta.10.zip"), "update: opted-in beta.2 finds beta.10 with the suffix preserved");
+            Check(Updater.Newest(betaJson, "0.7.13-beta.2", true, true)?.ZipUrl.EndsWith("-server.zip") == true, "update: beta opt-in uses the dedicated server archive");
+            Check(Updater.Newest(betaJson, "0.7.13-beta.10", includePrereleases: true) == null, "update: no beta reinstall");
+            Check(Updater.Newest(betaJson, "0.7.13", includePrereleases: true) == null, "update: a stable installation never downgrades to its betas");
+            Check(Updater.CompareReleaseVersions("0.7.13-beta.2+one", "0.7.13-beta.2+two") == 0, "update: build metadata does not change precedence");
+            Check(Updater.CompareReleaseVersions("0.7.13-beta.999999999999999999999", "0.7.13-beta.10") > 0, "update: large beta identifiers do not overflow");
+            Check(Updater.CompareReleaseVersions("0.7.13-rc.1", "0.7.13-beta.10") > 0, "update: rc follows beta");
+            Check(Updater.CompareReleaseVersions("0.7.13-alpha.1", "0.7.13-alpha") > 0, "update: additional prerelease fields have higher precedence");
+            var stableJson = "[" + Rel("v0.7.13", false, false, Asset("MPFever-0.7.13.zip")) + "," + betaJson.Substring(1);
+            Check(Updater.Newest(stableJson, "0.7.13-beta.10", includePrereleases: true)?.Version == "0.7.13", "update: stable supersedes beta at the same core version");
+
+            string keptSettings = MainForm.SettingsFileForTest;
+            var keptContext = SynchronizationContext.Current;
+            string betaSettings = Path.Combine(Path.GetTempPath(), "mpfever-beta-setting-" + Guid.NewGuid().ToString("N") + ".txt");
+            try
+            {
+                MainForm.SettingsFileForTest = betaSettings;
+                Check(!Updater.IncludePrereleases && !Updater.Allowed(beta), "update checkbox: default off and pending beta not allowed");
+                using (var settings = new OptionsDialog(false))
+                {
+                    var checkbox = settings.Controls.Find(Updater.PrereleaseSetting, true).OfType<System.Windows.Forms.CheckBox>().Single();
+                    Check(!checkbox.Checked && checkbox.Enabled, "update checkbox: shown as an unchecked personal setting");
+                    checkbox.Checked = true;
+                    Check(Updater.IncludePrereleases && Updater.Allowed(beta), "update checkbox: ticking saves the opt-in and permits beta updates");
+                }
+                using (var settings = new OptionsDialog(false))
+                {
+                    var checkbox = settings.Controls.Find(Updater.PrereleaseSetting, true).OfType<System.Windows.Forms.CheckBox>().Single();
+                    Check(checkbox.Checked, "update checkbox: choice survives reopening Settings");
+                    checkbox.Checked = false;
+                    Check(!Updater.IncludePrereleases && !Updater.Allowed(beta), "update checkbox: unticking rejects a cached beta update");
+                }
+            }
+            catch (Exception e) { Check(false, "update checkbox: " + e); }
+            finally
+            {
+                // Constructing WinForms controls installs a UI synchronization context. These headless tests have no
+                // message loop: restore the previous context before later async pipe checks run on this thread.
+                SynchronizationContext.SetSynchronizationContext(keptContext);
+                MainForm.SettingsFileForTest = keptSettings;
+                try { File.Delete(betaSettings); } catch { }
+            }
 
             var root = Path.Combine(Path.GetTempPath(), "mpfever_selftest_update_" + System.Diagnostics.Process.GetCurrentProcess().Id);
             try

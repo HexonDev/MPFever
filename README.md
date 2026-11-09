@@ -1,9 +1,11 @@
 # MPFever – Multiplayer for Transport Fever 3
 
-This fork's **0.7.13-beta.2** is a Windows x64 preview with a bundled .NET 10 runtime, Lua polling optimizations,
+This fork's **0.7.13-beta.3** is a Windows x64 preview with a bundled .NET 10 runtime, Lua polling optimizations,
 independent local testing and an opt-in named-pipe ping/pong experiment. Download it from
 [HexonDev/MPFever releases](https://github.com/HexonDev/MPFever/releases).
 Ordinary multiplayer still uses file IPC. The pipe probe is disabled by default; see [PIPE-PROBE](docs/PIPE-PROBE.md).
+To include future betas in automatic update checks, tick **Settings → Your settings → Check for beta releases**.
+The choice is saved locally and is off by default. Install beta.3 manually once; older launchers do not have this checkbox.
 
 **Play Transport Fever 3 with your friends, in the same world, over the internet or a local network.**
 
