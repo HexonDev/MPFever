@@ -68,7 +68,8 @@ def package(root, version):
         stage.mkdir()
 
     player = release / "dist/MPFever"
-    shutil.copytree(publish, player, ignore=shutil.ignore_patterns("*.pdb"))
+    shutil.copytree(publish, player, ignore=shutil.ignore_patterns(
+        "*.pdb", "logs", "mpfever_settings.txt", "mpfever_server.properties", "autotest_result.txt"))
     licenses = player / "licenses"
     licenses.mkdir(exist_ok=True)
     for source, name in notices:

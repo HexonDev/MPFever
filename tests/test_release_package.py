@@ -23,7 +23,8 @@ def main():
             raise AssertionError("incomplete runtime was accepted")
         except ValueError as error:
             assert "incomplete" in str(error)
-        for name in module.RUNTIME_FILES + ("fr/System.Windows.Forms.resources.dll", "LICENSE.txt", "ThirdPartyNotices.txt", "MPFever.pdb"):
+        for name in module.RUNTIME_FILES + ("fr/System.Windows.Forms.resources.dll", "LICENSE.txt", "ThirdPartyNotices.txt", "MPFever.pdb",
+                                           "logs/selftest.log", "mpfever_settings.txt", "autotest_result.txt"):
             file = publish / name
             file.parent.mkdir(parents=True, exist_ok=True)
             file.write_text("fixture " + name)
@@ -53,6 +54,7 @@ def main():
             assert "MPFever/fr/System.Windows.Forms.resources.dll" in names
             assert "MPFever/coreclr.dll" in names and "MPFever/MPFever.dll" in names
             assert "MPFever/MPFever.pdb" not in names
+            assert not any("/logs/" in name or name.endswith("mpfever_settings.txt") or name.endswith("autotest_result.txt") for name in names)
             assert archive.read("MPFever/licenses/dotnet-LICENSE.txt") == b"fixture LICENSE.txt"
             assert archive.read("MPFever/LICENSE.txt") == b"fixture LICENSE"
             assert archive.read("MPFever/licenses/Microsoft.NETCore.App-THIRD-PARTY-NOTICES.txt") == b"runtime third party notices"
